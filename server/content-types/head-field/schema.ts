@@ -25,6 +25,7 @@ export default {
       type: "relation",
       relation: "manyToOne",
       target: "plugin::revalidator.head",
+      inversedBy: "fields",
       configurable: false,
     },
     key: {
@@ -38,4 +39,4 @@ export default {
       configurable: false,
     }
   },
-};
+} as const;

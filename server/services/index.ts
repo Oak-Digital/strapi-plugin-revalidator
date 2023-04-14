@@ -1,5 +1,9 @@
-import myService from './my-service';
+import head from './head';
+import headType from './head-type';
+import headField from './head-field';
 
 export default {
-  myService,
+  head,
+  headType,
+  headField,
 };

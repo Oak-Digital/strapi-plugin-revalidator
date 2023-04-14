@@ -31,5 +31,11 @@ export default {
       max: 50,
       configurable: false,
     },
+    fields: {
+      type: "relation",
+      relation: 'oneToMany',
+      target: 'plugin::revalidator.head-field',
+      mappedBy: 'head',
+    }
   }
-};
+} as const;

@@ -1,5 +1,5 @@
-import myController from './my-controller';
+import head from "./head";
 
 export default {
-  myController,
+  head,
 };

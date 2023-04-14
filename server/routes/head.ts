@@ -1,7 +1,14 @@
-export default [
+import { StrapiRoute } from "strapi-typed";
+
+const routes: StrapiRoute[] = [
   {
     method: "GET",
     path: "/",
     handler: "head.findMany",
+    config: {
+      policies: [],
+    },
   },
 ];
+
+export default routes;
