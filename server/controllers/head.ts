@@ -3,6 +3,11 @@ import { getService } from "../lib/service";
 import { z } from "zod";
 
 export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
+  findOne: async (ctx: StrapiRequestContext) => {
+    const head = await getService(strapi, "head").findOne(ctx.params.id);
+    ctx.send(head);
+  },
+
   findMany: async (ctx) => {
     try {
       const heads = await getService(strapi, "head").findMany();
@@ -41,18 +46,22 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
       parsed.headType
     );
     const schemaWithFields = schema.extend({
-      fields: z.object(
-        fieldKeys.reduce((acc, key) => {
-          acc[key] = z.string();
-          return acc;
-        }, {})
-      ),
+      fields: z
+        .object(
+          fieldKeys.reduce((acc, key) => {
+            acc[key] = z.string().optional();
+            return acc;
+          }, {})
+        )
+        .default({}),
     });
 
     const parsedWithFields = schemaWithFields.parse(body);
 
     // create the head
     const head = await getService(strapi, "head").create(parsedWithFields);
+
+    ctx.send(head);
   },
 
   update: async (ctx: StrapiRequestContext) => {
@@ -84,15 +93,15 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
     const schemaWithFields = schema.extend({
       fields: z.object(
         fieldKeys.reduce((acc, key) => {
-          acc[key] = z.string();
+          acc[key] = z.union([z.null(), z.string()]).optional();
           return acc;
         }, {})
-      ),
+      ).default({}),
     });
 
     const parsedWithFields = schemaWithFields.parse(body);
 
-    // create the head
+    // update the head
     const head = await getService(strapi, "head").update(parsedWithFields);
   },
 

@@ -1,14 +1,18 @@
 import { Id, IStrapi } from "strapi-typed";
-import { Strapi } from "@strapi/strapi";
-import pluginId from "../pluginId";
 import { getService } from "../lib/service";
 
 export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
   findOne: async (id: Id) => {
     const head = await strapi.entityService.findOne(
       "plugin::revalidator.head",
-      id
+      id,
+      {
+        populate: {
+          fields: true,
+        },
+      }
     );
+
     return head;
   },
 
@@ -64,16 +68,16 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
     // create the fields
     const fields = await Promise.all(
       Object.keys(data.fields).map(async (key) => {
-        const field = await getService(strapi, "head-field").create({
-          head: {
-            set: head.id,
-          },
+        const field = await getService(strapi, "head-field").create(
+          head.id,
           key,
-          value: data.fields[key],
-        });
+          data.fields[key]
+        );
         return field;
       })
     );
+
+    console.log(fields);
 
     return head;
   },
@@ -92,12 +96,14 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
       },
     });
 
-    // create the fields
+    // update or create the fields
     const fields = await Promise.all(
       Object.keys(data.fields).map(async (key) => {
-        const field = await getService(strapi, "head-field").update(id, key, {
-          value: data.fields[key],
-        });
+        const field = await getService(strapi, "head-field").upsertOrDelete(
+          id,
+          key,
+          data.fields[key]
+        );
         return field;
       })
     );

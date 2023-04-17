@@ -8,7 +8,7 @@ export const useHeadTypes = () => {
     async () => {
       const response = await request(`/${pluginId}/head-types/`, {
         method: "GET",
-      });
+      }) as Record<string, string[]>;
 
       return response;
     },
