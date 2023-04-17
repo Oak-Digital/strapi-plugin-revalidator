@@ -29,6 +29,11 @@ const HeadsPage = () => {
           component={ListHeadsPage}
           exact
         />
+        <Route
+          path={`/settings/${pluginId}/heads/page/:page`}
+          component={ListHeadsPage}
+          exact
+        />
       </Switch>
     </>
   );

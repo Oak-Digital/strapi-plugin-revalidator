@@ -8,15 +8,12 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
     ctx.send(head);
   },
 
-  findMany: async (ctx) => {
-    try {
-      const heads = await getService(strapi, "head").findMany();
-      ctx.send(heads);
-    } catch (err) {
-      ctx.status = err.status || 500;
-      ctx.body = err.message;
-      ctx.app.emit("error", err, ctx);
-    }
+  findMany: async (ctx: StrapiRequestContext) => {
+    // TODO: use try catch here
+    const { query = {} } = ctx;
+    console.log("query", query);
+    const heads = await getService(strapi, "head").findMany(query);
+    ctx.send(heads);
   },
 
   create: async (ctx: StrapiRequestContext) => {
@@ -92,19 +89,21 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
       parsed.headType
     );
     const schemaWithFields = schema.extend({
-      fields: z.object(
-        fieldKeys.reduce((acc, key) => {
-          acc[key] = z.union([z.null(), z.string()]).optional();
-          return acc;
-        }, {})
-      ).default({}),
+      fields: z
+        .object(
+          fieldKeys.reduce((acc, key) => {
+            acc[key] = z.union([z.null(), z.string()]).optional();
+            return acc;
+          }, {})
+        )
+        .default({}),
     });
 
     let parsedWithFields: z.infer<typeof schemaWithFields>;
     try {
       parsedWithFields = schemaWithFields.parse(body);
     } catch (e) {
-      return ctx.badRequest(e?.message ?? 'Some data is invalid');
+      return ctx.badRequest(e?.message ?? "Some data is invalid");
     }
 
     // update the head

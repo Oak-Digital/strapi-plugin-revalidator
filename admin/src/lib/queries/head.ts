@@ -36,9 +36,14 @@ export const useHead = <Data = any>(
 };
 
 export const useHeads = (page: number) => {
+  const pageSize = 10;
   return useQuery(getHeadsPageKey(page), async () => {
     const response = await request(`/${pluginId}/heads`, {
       method: "GET",
+      params: {
+        page,
+        pageSize,
+      },
     });
 
     return response;
