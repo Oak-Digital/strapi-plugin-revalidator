@@ -3,7 +3,7 @@ import { StrapiRoute } from "strapi-typed";
 const routes: StrapiRoute[] = [
   {
     method: "GET",
-    path: "/",
+    path: "/heads/",
     handler: "head.findMany",
     config: {
       policies: [],

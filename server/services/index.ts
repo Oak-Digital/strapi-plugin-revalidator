@@ -4,6 +4,6 @@ import headField from './head-field';
 
 export default {
   head,
-  headType,
-  headField,
+  'head-type': headType,
+  'head-field': headField,
 };

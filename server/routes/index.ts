@@ -1,10 +1,12 @@
 import headRoutes from './head';
+import headTypeRoutes from './head-type';
 
 export default {
-  'content-api': {
-    type: 'content-api',
+  'admin': {
+    type: 'admin',
     routes: [
       ...headRoutes,
+      ...headTypeRoutes,
     ],
   }
 };
