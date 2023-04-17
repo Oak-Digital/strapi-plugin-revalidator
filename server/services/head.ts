@@ -89,8 +89,7 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
       fields: Record<string, string>;
     }
   ) => {
-    const head = await strapi.entityService.update("plugin::revalidator.head", {
-      id,
+    const head = await strapi.entityService.update("plugin::revalidator.head", id, {
       data: {
         title: data.title,
       },

@@ -5,7 +5,6 @@ import { ContentLayout, HeaderLayout } from "@strapi/design-system";
 import { useIntl } from "react-intl";
 import pluginId from "../../pluginId";
 import { Switch as WrongSwitch, Route as WrongRoute } from "react-router-dom";
-import CreateHeadsPage from "./Create";
 import EditHeadsPage from "./Edit";
 import ListHeadsPage from "./List";
 const Switch = WrongSwitch as any;

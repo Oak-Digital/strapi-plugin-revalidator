@@ -66,6 +66,7 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
 
   update: async (ctx: StrapiRequestContext) => {
     const { body = {} } = ctx.request;
+    const { id } = ctx.params;
 
     const initialValidHeadTypes: string[] = getService(
       strapi,
@@ -99,10 +100,17 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
       ).default({}),
     });
 
-    const parsedWithFields = schemaWithFields.parse(body);
+    let parsedWithFields: z.infer<typeof schemaWithFields>;
+    try {
+      parsedWithFields = schemaWithFields.parse(body);
+    } catch (e) {
+      return ctx.badRequest(e?.message ?? 'Some data is invalid');
+    }
 
     // update the head
-    const head = await getService(strapi, "head").update(parsedWithFields);
+    const head = await getService(strapi, "head").update(id, parsedWithFields);
+
+    ctx.send(head);
   },
 
   delete: async (ctx: StrapiRequestContext) => {},

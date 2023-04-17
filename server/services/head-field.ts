@@ -36,8 +36,8 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
     const field = await getService(strapi, "head-field").getField(headId, key);
     const newField = await strapi.entityService.update(
       "plugin::revalidator.head-field",
+      field.id,
       {
-        id: field.id,
         data: {
           key,
           value,
@@ -59,9 +59,7 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
     const service = getService(strapi, "head-field");
     const field = await service.getField(headId, key);
     if (field) {
-      const newField = await service.update(headId, key, {
-        value,
-      });
+      const newField = await service.update(headId, key, value);
       return newField;
     } else {
       const newField = await service.create(headId, key, value);

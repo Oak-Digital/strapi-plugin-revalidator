@@ -25,6 +25,14 @@ const routes: StrapiRoute[] = [
       policies: [],
     },
   },
+  {
+    method: "PUT",
+    path: "/heads/:id",
+    handler: "head.update",
+    config: {
+      policies: [],
+    },
+  },
 ];
 
 export default routes;

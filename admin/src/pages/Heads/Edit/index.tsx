@@ -21,11 +21,11 @@ import { Formik, Form } from "formik";
 import { useHeadTypes } from "../../../lib/queries/head-type";
 import { Check, ArrowLeft } from "@strapi/icons";
 import { useRouteMatch, useHistory } from "react-router-dom";
-import { useHead } from "../../../lib/queries/head";
+import { useCreateHead, useHead, useUpdateHead } from "../../../lib/queries/head";
 import { CrossCircle } from "@strapi/icons";
 
 type Inputs = {
-  name: string;
+  title: string;
   headType: string | null;
   fields?: Record<string, string>;
 };
@@ -47,7 +47,22 @@ const EditHeadsPage = () => {
 
   const { data, error } = useHead(id, {
     enabled: !isNew,
+    select: (data: any) => {
+      return {
+        ...data,
+        fields: data.fields.reduce(
+          (acc: Record<string, string>, field: any) => ({
+            ...acc,
+            [field.key]: field.value,
+          }),
+          {}
+        ),
+      };
+    },
   });
+
+  const updateHead = useUpdateHead();
+  const createHead = useCreateHead();
 
   if (!isNew && !data) {
     if (error) {
@@ -65,7 +80,7 @@ const EditHeadsPage = () => {
     }
     return (
       <ContentLayout>
-        <EmptyStateLayout content={<Loader />} />
+        <Loader />
       </ContentLayout>
     );
   }
@@ -74,15 +89,12 @@ const EditHeadsPage = () => {
     let response;
     try {
       if (isNew) {
-        response = await request(`/${pluginId}/heads`, {
-          method: "POST",
-          body: values,
-        });
+        response = await createHead.mutateAsync(values);
         replace(`/settings/${pluginId}/heads/edit/${response.id}`);
       } else {
-        response = await request(`/${pluginId}/heads/${id}`, {
-          method: "PUT",
-          body: values,
+        response = await updateHead.mutateAsync({
+          id,
+          data: values,
         });
       }
     } catch (e) {
@@ -109,7 +121,7 @@ const EditHeadsPage = () => {
   const initialFields = data?.fields || {};
 
   const initialValues: Inputs = {
-    name: data?.name || "",
+    title: data?.title || "",
     headType: data?.headType || null,
     fields: initialFields,
   };
@@ -125,96 +137,98 @@ const EditHeadsPage = () => {
           touched,
           isSubmitting,
           setFieldValue,
-        }) => (
-          <Form onSubmit={handleSubmit}>
-            <HeaderLayout
-              title={formatMessage({
-                id: `${pluginId}.settings.page.heads.create.title`,
-                defaultMessage: "Create a new head",
-              })}
-              subtitle={formatMessage({
-                id: `${pluginId}.settings.page.heads.create.description`,
-                defaultMessage:
-                  "Define endpoints and settings for the heads of this application",
-              })}
-              primaryAction={
-                <Button
-                  type="submit"
-                  loading={isSubmitting}
-                  startIcon={<Check />}
-                >
-                  {formatMessage({
-                    id: "global.save",
-                    defaultMessage: "Save",
-                  })}
-                </Button>
-              }
-              navigationAction={
-                <Link
-                  startIcon={<ArrowLeft />}
-                  to={`/settings/${pluginId}/heads/`}
-                >
-                  {formatMessage({
-                    id: "global.back",
-                    defaultMessage: "Back",
-                  })}
-                </Link>
-              }
-            />
-            <ContentLayout>
-              <Box>
-                <Grid gap={4}>
-                  <GridItem col={6}>
-                    <TextInput
-                      name="name"
-                      label={formatMessage({
-                        id: `${pluginId}.settings.page.heads.create.name`,
-                        defaultMessage: "Name",
-                      })}
-                      value={values.name}
-                      onChange={(e: any) =>
-                        setFieldValue("name", e.target.value)
-                      }
-                    />
-                  </GridItem>
-                  <GridItem col={6}>
-                    <Select
-                      required
-                      error={errors.headType}
-                      label="Type"
-                      name="headType"
-                      value={values.headType}
-                      onChange={(value: string) =>
-                        setFieldValue("headType", value)
-                      }
-                    >
-                      {headTypesKeys.map((key) => (
-                        <Option key={key} value={key}>
-                          {key}
-                        </Option>
-                      ))}
-                    </Select>
-                  </GridItem>
+        }) => {
+          return (
+            <Form onSubmit={handleSubmit}>
+              <HeaderLayout
+                title={formatMessage({
+                  id: `${pluginId}.settings.page.heads.create.title`,
+                  defaultMessage: "Create a new head",
+                })}
+                subtitle={formatMessage({
+                  id: `${pluginId}.settings.page.heads.create.description`,
+                  defaultMessage:
+                    "Define endpoints and settings for the heads of this application",
+                })}
+                primaryAction={
+                  <Button
+                    type="submit"
+                    loading={isSubmitting}
+                    startIcon={<Check />}
+                  >
+                    {formatMessage({
+                      id: "global.save",
+                      defaultMessage: "Save",
+                    })}
+                  </Button>
+                }
+                navigationAction={
+                  <Link
+                    startIcon={<ArrowLeft />}
+                    to={`/settings/${pluginId}/heads/`}
+                  >
+                    {formatMessage({
+                      id: "global.back",
+                      defaultMessage: "Back",
+                    })}
+                  </Link>
+                }
+              />
+              <ContentLayout>
+                <Box>
+                  <Grid gap={4}>
+                    <GridItem col={6}>
+                      <TextInput
+                        name="title"
+                        label={formatMessage({
+                          id: `${pluginId}.settings.page.heads.create.title`,
+                          defaultMessage: "Name",
+                        })}
+                        value={values.title}
+                        onChange={(e: any) =>
+                          setFieldValue("title", e.target.value)
+                        }
+                      />
+                    </GridItem>
+                    <GridItem col={6}>
+                      <Select
+                        required
+                        error={errors.headType}
+                        label="Type"
+                        name="headType"
+                        value={values.headType}
+                        onChange={(value: string) =>
+                          setFieldValue("headType", value)
+                        }
+                      >
+                        {headTypesKeys.map((key) => (
+                          <Option key={key} value={key}>
+                            {key}
+                          </Option>
+                        ))}
+                      </Select>
+                    </GridItem>
 
-                  {/* Fields */}
-                  {values.headType &&
-                    headTypes?.[values.headType].map((field) => (
-                      <GridItem col={6} key={`${values.headType}.${field}`}>
-                        <TextInput
-                          name={field}
-                          label={field}
-                          value={values.fields?.[field] || ""}
-                          onChange={(e: any) =>
-                            setFieldValue(`fields.${field}`, e.target.value)
-                          }
-                        />
-                      </GridItem>
-                    ))}
-                </Grid>
-              </Box>
-            </ContentLayout>
-          </Form>
-        )}
+                    {/* Fields */}
+                    {values.headType &&
+                      headTypes?.[values.headType].map((field) => (
+                        <GridItem col={6} key={`${values.headType}.${field}`}>
+                          <TextInput
+                            name={field}
+                            label={field}
+                            value={values.fields?.[field] || ""}
+                            onChange={(e: any) =>
+                              setFieldValue(`fields.${field}`, e.target.value)
+                            }
+                          />
+                        </GridItem>
+                      ))}
+                  </Grid>
+                </Box>
+              </ContentLayout>
+            </Form>
+          );
+        }}
       </Formik>
     </Main>
   );

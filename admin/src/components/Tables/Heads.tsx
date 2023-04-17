@@ -42,7 +42,7 @@ const HeadsTable = () => {
         {heads?.results?.map((head: any) => (
           <Tr key={head.id}>
             <Td>{head.id}</Td>
-            <Td>{head.name}</Td>
+            <Td>{head.title}</Td>
             <Td>{head.headType}</Td>
             <Td>
               <Flex justifyContent="end">
