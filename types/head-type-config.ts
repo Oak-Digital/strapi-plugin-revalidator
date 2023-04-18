@@ -21,9 +21,14 @@ export const contentTypesConfig = z
         .record(z.union([revalidateOn, z.array(revalidateOn)]))
         .optional()
         .default({}),
-      revalidateFn: z
+      prepareFn: z
         .function()
         .args(/* Strapi */ z.any(), /* Fields */ z.any(), /* Model */ z.any())
+        .returns(z.promise(/* Prepared state */ z.any()))
+        .optional(),
+      revalidateFn: z
+        .function()
+        .args(/* Prepared state */ z.any())
         .returns(z.promise(z.any()))
         .optional(),
     })
