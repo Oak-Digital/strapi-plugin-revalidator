@@ -217,10 +217,10 @@ git clone git@github.com:Oak-Digital/strapi-plugin-revalidator.git revalidator
 cd revalidator
 ```
 
-Install dependencies with the `--force` flag for some reason
+Install dependencies with the
 
 ```bash
-npm install --force
+npm install
 ```
 
 Then to make sure the build is always up to date run
