@@ -17,6 +17,7 @@ This plugin let's you set up different types of heads and define rules for each 
 - [ ] Use GET parameters
 - [ ] Use POST parameters
 - [ ] Manual revalidate button on content types
+- [ ] Heads defined from environment variables
 
 * Integrations with preview deployments: (Make sure strapi revalidates those too)
   - [ ] Vercel
