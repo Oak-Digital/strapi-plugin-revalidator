@@ -24,6 +24,19 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
     return heads;
   },
 
+  findAllOfType: async (headType: string) => {
+    const heads = await strapi.entityService.findMany(
+      "plugin::revalidator.head",
+      {
+        filter: {
+          headType,
+        },
+      }
+    );
+
+    return heads;
+  },
+
   // Get the fields of a head from the db
   getFields: async (headId: Id) => {
     // find the head
@@ -51,6 +64,16 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
     );
 
     return fields;
+  },
+
+  getFieldsObject: async (headId: Id) => {
+    const service = getService(strapi, "head");
+    const fields = await service.getFields(headId);
+
+    return fields.reduce((acc, field) => {
+      acc[field.key] = field.value;
+      return acc;
+    }, {});
   },
 
   create: async (data: {
@@ -89,11 +112,15 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
       fields: Record<string, string>;
     }
   ) => {
-    const head = await strapi.entityService.update("plugin::revalidator.head", id, {
-      data: {
-        title: data.title,
-      },
-    });
+    const head = await strapi.entityService.update(
+      "plugin::revalidator.head",
+      id,
+      {
+        data: {
+          title: data.title,
+        },
+      }
+    );
 
     // update or create the fields
     const fields = await Promise.all(

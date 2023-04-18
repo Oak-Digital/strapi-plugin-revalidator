@@ -1,7 +1,10 @@
+import { configType } from "../../types/config";
+
 export default {
   default: {
   },
-  validator() {
-
+  validator(config: any) {
+    // validate config from schema
+    configType.parse(config);
   },
 };
