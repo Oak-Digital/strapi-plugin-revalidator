@@ -11,8 +11,8 @@ This plugin let's you set up different types of heads and define rules for each 
 
 ## Features
 
-- [ ] Define multiple head types
-- [ ] Define rules for each head on how strapi should revalidate each content type
+- [x] Define multiple head types
+- [x] Define rules for each head on how strapi should revalidate each content type
 - [ ] dynamic url builder
 - [ ] Use GET parameters
 - [ ] Use POST parameters
@@ -22,7 +22,7 @@ This plugin let's you set up different types of heads and define rules for each 
   - [ ] Vercel
   - [ ] Coolify
 
-## Plugin support
+## Plugin support / integrations
 
 - [ ] [UI Navigation](https://github.com/VirtusLab-Open-Source/strapi-plugin-navigation)
 - [ ] [url-alias](https://github.com/strapi-community/strapi-plugin-url-alias)
@@ -36,6 +36,75 @@ npm i strapi-plugin-revalidator
 ```
 
 ## Configuration
+
+The configuration has multiple parts.
+
+The first thing to notice is `headTypes`. `headTypes` are used to describe the different types of heads for the application.
+One might be a nextjs frontend and another could be a mobile app cache or github pages.
+
+`headTypes` should be a record, where the keys are the names of the head types used.
+
+example:
+
+```typescript
+{
+  headTypes: {
+    nextjs: {
+      // ...
+    },
+    githubPages: {
+      // ...
+    },
+  },
+}
+```
+
+`headTypes` should define customizable fields which are used to configure your heads with specific fields. These fields can be used to prepare a url or headers for a revalidation request.
+
+example:
+
+```typescript
+{
+  nextjs: {
+    fields: {
+      endpoint: {},
+      secret: {},
+    },
+  },
+}
+```
+
+each `headTypes` should also define which content types makes them revalidate. For example you might have a `page` content type that should revalidate when changed.
+You may also have designated pages for quotes or testimonials that needs to be revalidated in some other way.
+
+example:
+
+```typescript
+{
+  nextjs: {
+    // ...
+    'api::page.page': {
+      prepareFn: async (strapi, fields, page) => {
+        // ...
+        return {
+          url
+        };
+      },
+      // state is what is returned from prepareFn
+      revalidateFn: async (state) => {
+        // ...
+        fetch(state.url);
+      }
+    },
+  }
+}
+```
+
+Here we have also defined a prepare function, which should prepare the revalidations.
+We have also defined a revalidate function which should trigger the actual revalidation.
+This function is run after the changes in strapi has persisted. This makes it possible for the heads to fetch the newest available data.
+
+Full example:
 
 ```typescript
 export default ({ env }) => ({
@@ -56,48 +125,84 @@ export default ({ env }) => ({
 
           // Define the revalidation rules for each content type
           contentTypes: {
-            page: {
-              revalidateOn: {
-                page: {
-                  ifReferenced: true,
-                  revalidationType: 'soft',
-                },
+            'api::page.page': {
+              prepareFn: async (strapi, fields, page) => {
+                const { endpoint, secret } = fields;
+                try {
+                  const finalParams = {
+                    url: page.url,
+                    secret,
+                  };
+                  const finalUrl = `${endpoint}?${qs.stringify(finalParams)}`;
+                  return {
+                    finalUrl,
+                  };
+                } catch (e) {
+                  console.error(e);
+                }
+              },
+              revalidateFn: async (state) => {
+                try {
+                  const data = await fetch(state.finalUrl);
+                } catch (e) {
+                  console.error(e);
+                }
+              },
+              // revalidateOn: {
+              //   page: {
+              //     ifReferenced: true,
+              //     revalidationType: 'soft',
+              //   },
 
-                article: [
-                  {
-                    ifReferenced: true,
-                  },
-                  {
-                    // This should probably be changed in later versions, so it doesn't run on ALL pages
-                    predicate(page, article) {
-                      return page.attributes.content.some((block) => block.__component === 'LatestArticles');
-                    },
-                  },
-                ],
+              //   article: [
+              //     {
+              //       ifReferenced: true,
+              //     },
+              //     {
+              //       // This should probably be changed in later versions, so it doesn't run on ALL pages
+              //       predicate(page, article) {
+              //         return page.attributes.content.some((block) => block.__component === 'LatestArticles');
+              //       },
+              //     },
+              //   ],
 
-                quote: {
-                  ifReferenced: true,
-                  revalidationType: 'soft',
+              //   quote: {
+              //     ifReferenced: true,
+              //     revalidationType: 'soft',
+              //   },
+              // },
+            },
+            'api::quote.quote': {
+              prepareFn: async (strapi, fields, quote) => {
+                const { endpoint, secret } = fields;
+                const finalUrl = `${endpoint}/quotes/${quote.id}?${qs.stringify({ secret })}`
+                return {
+                  finalUrl,
                 },
               },
-            },
+              revalidateFn: async (state) => {
+                try {
+                  await fetch(state.finalUrl)
+                } catch (e) {
 
-            quote: {
+                }
+              },
             },
           },
         },
       },
 
       // Hard coded heads - this may be good for monorepos
-      defaultHeads: {
-        myFrontend: [
-          {
-            // myFrontend's fields
-            endpoint: env("FRONTEND_ENDPOINT"),
-            secret: env("REVALIDATION_SECRET"),
-          },
-        ],
-      },
+      // Not implemented
+      //defaultHeads: {
+      //  myFrontend: [
+      //    {
+      //      // myFrontend's fields
+      //      endpoint: env("FRONTEND_ENDPOINT"),
+      //      secret: env("REVALIDATION_SECRET"),
+      //    },
+      //  ],
+      //},
     },
   },
 });
