@@ -31,7 +31,7 @@ This plugin let's you set up different types of heads and define rules for each 
 Install the plugin
 
 ```
-npm i strapi-plugin-revalidator
+npm i @oak-digital/strapi-plugin-revalidator
 ```
 
 ## Configuration
