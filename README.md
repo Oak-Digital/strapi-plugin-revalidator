@@ -1,7 +1,5 @@
 # Strapi plugin revalidator
 
-WIP
-
 This plugin is meant to create webhooks, but specifically for cache invalidations or page revalidations of your frontend applications.
 
 In this plugin the word head is the head of your application. Of course Strapi is headless, but the frontends (heads) should still be updated when you update the data in strapi.
