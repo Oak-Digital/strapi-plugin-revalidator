@@ -58,6 +58,8 @@ example:
 }
 ```
 
+### Fields
+
 `headTypes` should define customizable fields which are used to configure your heads with specific fields. These fields can be used to prepare a url or headers for a revalidation request.
 
 example:
@@ -73,9 +75,47 @@ example:
 }
 ```
 
+### `prepareFn: (strapi, fields, entry) => any`
+
 each `headTypes` should also define which content types makes them revalidate. For example you might have a `page` content type that should revalidate when changed.
 You may also have designated pages for quotes or testimonials that needs to be revalidated in some other way.
 
+To revalidate, you first need to prepare urls or whatever you need in the `prepareFn`. The `prepareFn` should return a state to be used for the `revalidateFn`.
+By default the `revalidateFn` will simply do a fetch based on the following fields from the returned state.
+
+```typescript
+{
+  url,
+  body,
+  params,
+  method,
+}
+```
+
+`url` is the url to request.
+`body` is the data that should be sent in the body.
+`params` is an object of query parameters that will be added to the `url`.
+`method` is the method that should be used to request, by default `"POST"` is used.
+
+example:
+
+```typescript
+{
+  nextjs: {
+    // ...
+    'api::page.page': {
+      prepareFn: async (strapi, fields, page) => {
+        // ...
+        return {
+          url
+        };
+      },
+    },
+  }
+}
+```
+
+You may want to do something else than just making a request in the revalidation function. This can be customized by changing the `revalidateFn`.
 example:
 
 ```typescript
@@ -99,11 +139,7 @@ example:
 }
 ```
 
-Here we have also defined a prepare function, which should prepare the revalidations.
-We have also defined a revalidate function which should trigger the actual revalidation.
-This function is run after the changes in strapi has persisted. This makes it possible for the heads to fetch the newest available data.
-
-Full example:
+### Full example
 
 ```typescript
 export default ({ env }) => ({

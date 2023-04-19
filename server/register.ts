@@ -1,9 +1,30 @@
 import { Strapi } from "@strapi/strapi";
+import axios from "axios";
 import pluginId from "./pluginId";
 import { headTypesConfig } from "../types/config";
 import { getService } from "./lib/service";
 import { IStrapi } from "strapi-typed";
 import { STATE_KEY } from "./lib/constants";
+
+const fallbackRevalidateFn = async (preparedState) => {
+  try {
+    if (typeof preparedState !== "object") {
+      return;
+    }
+    const { url, method = "POST", body, params } = preparedState;
+    if (!url) {
+      return;
+    }
+    await axios({
+      url,
+      method,
+      params,
+      data: body,
+    })
+  } catch (e) {
+    console.error(e);
+  }
+};
 
 export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
   // registeration phase
@@ -17,8 +38,8 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
       const configContentType = contentTypes[contentTypeName];
       const contentType = strapi.contentType(contentTypeName);
       const revalidationFunction =
-        configContentType.revalidateFn ?? (async () => {});
-      const prepareFunction = configContentType.prepareFn ?? (async () => {});
+        configContentType.revalidateFn ?? fallbackRevalidateFn;
+      const prepareFunction = configContentType.prepareFn;
 
       ["beforeUpdate", "beforeDelete"].forEach((lifecycleName) => {
         const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
@@ -35,25 +56,27 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
             headTypeName
           );
           const entry = await entryPromise;
-          await Promise.all(
-            heads.map(async (head) => {
-              const fields = await getService(strapi, "head").getFieldsObject(
-                head.id
-              );
-              const entries = await entryPromise;
-              const preparedState = await prepareFunction(
-                strapi,
-                fields,
-                entry
-              );
-              event.state[STATE_KEY].push({
-                head,
-                fields,
-                preparedState,
-              });
-              /* return { head, preparedState }; */
-            })
-          );
+          if (prepareFunction) {
+            await Promise.all(
+              heads.map(async (head) => {
+                const fields = await getService(strapi, "head").getFieldsObject(
+                  head.id
+                );
+                const entries = await entryPromise;
+                const preparedState = await prepareFunction(
+                  strapi,
+                  fields,
+                  entry
+                );
+                event.state[STATE_KEY].push({
+                  head,
+                  fields,
+                  preparedState,
+                });
+                /* return { head, preparedState }; */
+              })
+            );
+          }
           await oldFunctionPromise;
         };
       });
@@ -70,19 +93,21 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
           const heads = await getService(strapi, "head").findAllOfType(
             headTypeName
           );
-          await Promise.all(
-            heads.map(async (head) => {
-              const fields = await getService(strapi, "head").getFieldsObject(
-                head.id
-              );
-              const preparedState = await prepareFunction(
-                strapi,
-                fields,
-                entry
-              );
-              await revalidationFunction(preparedState);
-            })
-          );
+          if (prepareFunction) {
+            await Promise.all(
+              heads.map(async (head) => {
+                const fields = await getService(strapi, "head").getFieldsObject(
+                  head.id
+                );
+                const preparedState = await prepareFunction(
+                  strapi,
+                  fields,
+                  entry
+                );
+                await revalidationFunction(preparedState);
+              })
+            );
+          }
           return result;
         };
       });
@@ -98,31 +123,31 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
             headTypeName
           );
           // TODO: use state heads
-          const revalidatingPromise = Promise.all(
-            heads.map(async (head) => {
-              const fields = await getService(strapi, "head").getFieldsObject(
-                head.id
-              );
-              const preparedState = await prepareFunction(
-                strapi,
-                fields,
-                entry
-              );
-              await revalidationFunction(preparedState);
-            })
-          );
+          if (prepareFunction) {
+            const revalidatingPromise = Promise.all(
+              heads.map(async (head) => {
+                const fields = await getService(strapi, "head").getFieldsObject(
+                  head.id
+                );
+                const preparedState = await prepareFunction(
+                  strapi,
+                  fields,
+                  entry
+                );
+                await revalidationFunction(preparedState);
+              })
+            );
 
-          const revalidatingBeforePromise = event.state[STATE_KEY].map(
-            async (state) => {
-              const { head, fields, preparedState } = state;
-              await revalidationFunction(preparedState);
-            }
-          );
+            const revalidatingBeforePromise = event.state[STATE_KEY].map(
+              async (state) => {
+                const { head, fields, preparedState } = state;
+                await revalidationFunction(preparedState);
+              }
+            );
 
-          await Promise.all([
-            revalidatingPromise,
-            revalidatingBeforePromise,
-          ]);
+            await Promise.all([revalidatingPromise, revalidatingBeforePromise]);
+          }
+
           return result;
         };
       });
@@ -133,14 +158,16 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
           // call the old function
           const result = await oldFunction(event);
 
-          const revalidatingBeforePromise = Promise.all(
-            event.state[STATE_KEY].map(async (state) => {
-              const { head, fields, preparedState } = state;
-              await revalidationFunction(preparedState);
-            })
-          );
+          if (prepareFunction) {
+            const revalidatingBeforePromise = Promise.all(
+              event.state[STATE_KEY].map(async (state) => {
+                const { head, fields, preparedState } = state;
+                await revalidationFunction(preparedState);
+              })
+            );
 
-          await revalidatingBeforePromise;
+            await revalidatingBeforePromise;
+          }
           return result;
         };
       });
