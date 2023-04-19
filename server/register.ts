@@ -3,8 +3,10 @@ import axios from "axios";
 import pluginId from "./pluginId";
 import { headTypesConfig } from "../types/config";
 import { getService } from "./lib/service";
-import { IStrapi } from "strapi-typed";
+import { Id, IStrapi } from "strapi-typed";
 import { STATE_KEY } from "./lib/constants";
+import { RevalidateOn } from "../types/head-type-config";
+import { get, set } from "lodash";
 
 const fallbackRevalidateFn = async (preparedState) => {
   try {
@@ -20,10 +22,385 @@ const fallbackRevalidateFn = async (preparedState) => {
       method,
       params,
       data: body,
-    })
+    });
   } catch (e) {
     console.error(e);
   }
+};
+
+const componentHasRelation = (
+  strapi: Strapi,
+  componentName: string,
+  relationContentTypeName: string
+) => {
+  return Object.keys(strapi.components[componentName].attributes).some(
+    (attributeName) => {
+      const attribute =
+        strapi.components[componentName].attributes[attributeName];
+      if (attribute.type === "relation") {
+        if (attribute.relation === relationContentTypeName) {
+          return true;
+        }
+      }
+
+      if (attribute.type === "component") {
+        return componentHasRelation(
+          strapi,
+          attribute.component,
+          relationContentTypeName
+        );
+      }
+
+      return false;
+    }
+  );
+};
+
+const componentRelationPaths = (
+  strapi: Strapi,
+  componentName: string,
+  relationContentTypeName: string
+) => {
+  const paths: string[] = [];
+  Object.keys(strapi.components[componentName].attributes).forEach(
+    (attributeName) => {
+      const attribute =
+        strapi.components[componentName].attributes[attributeName];
+      if (attribute.type === "relation") {
+        if (attribute.target === relationContentTypeName) {
+          paths.push(attributeName);
+        }
+      }
+
+      if (attribute.type === "component") {
+        const componentPaths = componentRelationPaths(
+          strapi,
+          attribute.component,
+          relationContentTypeName
+        );
+        componentPaths.forEach((componentPath) => {
+          paths.push(`${attributeName}.${componentPath}`);
+        });
+      }
+    }
+  );
+  return paths;
+};
+
+const contentTypeHasRelation = (
+  strapi: Strapi,
+  contentTypeName: string,
+  relationContentTypeName: string
+) => {
+  const contentType = strapi.contentType(contentTypeName);
+  return Object.keys(contentType.attributes).some((attributeName) => {
+    const attribute = contentType.attributes[attributeName];
+    if (attribute.type === "relation") {
+      if (attribute.target === relationContentTypeName) {
+        return true;
+      }
+    }
+
+    if (attribute.type === "component") {
+      return componentHasRelation(
+        strapi,
+        attribute.component,
+        relationContentTypeName
+      );
+    }
+
+    if (attribute.type === "dynamiczone") {
+      return attribute.components.some((componentName) => {
+        return componentHasRelation(
+          strapi,
+          componentName,
+          relationContentTypeName
+        );
+      });
+    }
+
+    return false;
+  });
+};
+
+const contentTypeDynamicZoneWithRelationPaths = (
+  strapi: Strapi,
+  contentTypeName: string,
+  relationContentTypeName: string
+) => {
+  const paths: string[] = [];
+  const contentType = strapi.contentType(contentTypeName);
+  Object.keys(contentType.attributes).forEach((attributeName) => {
+    const attribute = contentType.attributes[attributeName];
+    if (attribute.type === "dynamiczone") {
+      attribute.components.forEach((componentName) => {
+        const componentPaths = componentRelationPaths(
+          strapi,
+          componentName,
+          relationContentTypeName
+        );
+        componentPaths.forEach((componentPath) => {
+          paths.push(`${attributeName}::${componentName}.${componentPath}`);
+        });
+      });
+    }
+  });
+  return paths;
+};
+
+const contentTypeRelationPaths = (
+  strapi: Strapi,
+  contentTypeName: string,
+  relationContentTypeName: string
+) => {
+  const paths: string[] = [];
+  const contentType = strapi.contentType(contentTypeName);
+  Object.keys(contentType.attributes).forEach((attributeName) => {
+    const attribute = contentType.attributes[attributeName];
+    if (attribute.type === "relation") {
+      if (attribute.relation === relationContentTypeName) {
+        paths.push(attributeName);
+      }
+    }
+
+    if (attribute.type === "component") {
+      const componentPaths = componentRelationPaths(
+        strapi,
+        attribute.component,
+        relationContentTypeName
+      );
+      componentPaths.forEach((componentPath) => {
+        paths.push(`${attributeName}.${componentPath}`);
+      });
+    }
+  });
+  return paths;
+};
+
+const pathToObjectWithId = (path: string, id: Id) => {
+  const obj = set({}, `${path}.id`, id);
+  return obj;
+};
+
+type RevalidateOther = Record<string, Record<string, Array<RevalidateOn>>>;
+type RevalidateObject = Record<
+  string,
+  {
+    revalidate: Set<Id>;
+    softRevalidate: Set<Id>;
+  }
+>;
+
+type RevalidatieOnlyObject = Record<string, Set<Id>>;
+
+const revalidateObjectToRevalidateOnlyObject = (
+  revalidateObject: RevalidateObject
+): RevalidatieOnlyObject => {
+  const revalidateOnlyObject: RevalidatieOnlyObject = {};
+  Object.keys(revalidateObject).forEach((key) => {
+    revalidateOnlyObject[key] = new Set();
+    revalidateObject[key].revalidate.forEach((id) => {
+      revalidateOnlyObject[key].add(id);
+    });
+    revalidateObject[key].softRevalidate.forEach((id) => {
+      revalidateOnlyObject[key].add(id);
+    });
+  });
+  return revalidateOnlyObject;
+};
+
+const mergeRevalidationObjects = (objects: RevalidateObject[]) => {
+  const merged: RevalidateObject = {};
+  objects.forEach((object) => {
+    Object.keys(object).forEach((key) => {
+      if (!merged[key]) {
+        merged[key] = {
+          revalidate: new Set(),
+          softRevalidate: new Set(),
+        };
+      }
+      object[key].softRevalidate.forEach((id) => {
+        merged[key].softRevalidate.add(id);
+      });
+      object[key].revalidate.forEach((id) => {
+        merged[key].revalidate.add(id);
+        merged[key].softRevalidate.delete(id);
+      });
+    });
+  });
+  return merged;
+};
+
+// the point of this function is to signal that the content type needs to revalidate
+// This should return an array or an object with other entries or content types that needs to revalidate
+const findEntriesToRevalidate = async (
+  strapi: Strapi,
+  contentTypeName: string,
+  entryId: Id, // entry beign revalidated
+  revalidateOther: RevalidateOther
+) => {
+  const rules = revalidateOther[contentTypeName];
+  const revalidationObject: RevalidateObject = {};
+  await Promise.all(
+    Object.keys(rules).map(async (otherContentTypeName) => {
+      const rulesForContentType = rules[otherContentTypeName];
+      const idsToRevalidate = new Set<Id>();
+      const idsToSoftRevalidate = new Set<Id>();
+      await Promise.all(
+        rulesForContentType.map(async (rule) => {
+          const { ifReferenced, predicate, revalidationType } = rule;
+          const idsToRevalidateForRule =
+            revalidationType === "soft" ? idsToSoftRevalidate : idsToRevalidate;
+          let entries: { id: Id }[];
+          if (ifReferenced) {
+            // find all entries that reference this entry
+            const paths = contentTypeRelationPaths(
+              strapi,
+              contentTypeName,
+              otherContentTypeName
+            );
+            const pathsWithId = paths.map((path) => {
+              return pathToObjectWithId(path, entryId);
+            });
+            const stringPathsWithId = paths.map((path) => `${path}.id`);
+
+            /* console.log(paths, pathsWithId); */
+
+            entries = await strapi.entityService.findMany(
+              otherContentTypeName,
+              {
+                fields: ["id"],
+                filters: {
+                  /* $and: [ */
+                  /*   { */
+                  $or: [
+                    // we need this rule, else it is trying to find ALL entries, if there is no paths
+                    {
+                      id: {
+                        $in: [],
+                      },
+                    },
+                    ...pathsWithId,
+                  ],
+                  /* }, */
+                  // TODO: test if this works, to get fewer query results
+                  /* { */
+                  /*   id: { */
+                  /*     $notIn: Array.from(idsToRevalidate), */
+                  /*   } */
+                  /* } */
+                  /* ], */
+                },
+              }
+            );
+
+            const dynamiczonePaths = contentTypeDynamicZoneWithRelationPaths(strapi, contentTypeName, otherContentTypeName);
+            const dynamiczonePopulatePaths = dynamiczonePaths.map((path) => {
+              const [attributeName, componentAndPath] = path.split("::");
+              const [componentCategory, componentName, ...restPath] = componentAndPath.split(".");
+              return [attributeName, ...restPath].join(".");
+            });
+            const dynamiczoneEntries = await strapi.entityService.findMany(
+              otherContentTypeName,
+              {
+                fields: ["id"],
+                populate: dynamiczonePopulatePaths,
+              }
+            );
+            const filteredDynamiczoneEntries = dynamiczoneEntries.filter((entry) => {
+              // filter for each attribute
+              // filter for each component
+
+              return dynamiczonePaths.some((path) => {
+                const [attributeName, componentAndPath] = path.split("::");
+                const [componentCategory, componentName, ...restPath] = componentAndPath.split(".");
+                const componentPath = restPath.join(".");
+                const attribute = entry[attributeName];
+                return attribute.some((component: any) => {
+                  const id = get(component, `${componentPath}.id`);
+                  return component.__component === `${componentCategory}.${componentName}` && id === entryId;
+                });
+              });
+            })
+            entries.push(...filteredDynamiczoneEntries);
+          } else {
+            entries = await strapi.entityService.findMany(
+              otherContentTypeName,
+              {
+                fields: ["id"],
+              }
+            );
+          }
+          entries.forEach((entry) => {
+            idsToRevalidateForRule.add(entry.id);
+          });
+        })
+      );
+
+      idsToRevalidate.forEach((id) => {
+        idsToSoftRevalidate.delete(id);
+      });
+
+      revalidationObject[otherContentTypeName] = {
+        revalidate: idsToRevalidate,
+        softRevalidate: idsToSoftRevalidate,
+      };
+    })
+  );
+
+  return revalidationObject;
+};
+
+const findAllEntriesToRevalidate = async (
+  strapi: Strapi,
+  contentTypeName: string,
+  entryId: string,
+  revalidateOther: RevalidateOther
+) => {
+  const checked: RevalidateObject = {};
+  let allEntriesToRevalidate: RevalidateObject = {
+    [contentTypeName]: {
+      revalidate: new Set([entryId]),
+      softRevalidate: new Set(),
+    },
+  };
+
+  // check all entries in allEntriesToRevalidate and add them to checked
+  // keep track of which entries need to be checked
+  // if there are no more entries to check, return checked
+
+  const queue: [string, Id][] = [[contentTypeName, entryId]];
+
+  while (queue.length > 0) {
+    const [contentTypeName, entryId] = queue.pop()!; // at this point we know that the queue is not empty since we just checked
+    if (!checked[contentTypeName]) {
+      checked[contentTypeName] = {
+        revalidate: new Set(),
+        softRevalidate: new Set(),
+      };
+    }
+    if (checked[contentTypeName].revalidate.has(entryId)) {
+      continue;
+    }
+    const entries = await findEntriesToRevalidate(
+      strapi,
+      contentTypeName,
+      entryId,
+      revalidateOther
+    );
+    Object.keys(entries).forEach((contentTypeName) => {
+      entries[contentTypeName].revalidate.forEach((id) => {
+        if (checked[contentTypeName].revalidate.has(id)) {
+          return;
+        }
+        queue.push([contentTypeName, id]);
+      });
+    });
+    const merged = mergeRevalidationObjects([allEntriesToRevalidate, entries]);
+    allEntriesToRevalidate = merged;
+  }
+
+  return revalidateObjectToRevalidateOnlyObject(allEntriesToRevalidate);
 };
 
 export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
@@ -32,8 +409,51 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
   const headTypesConfigData = strapi.plugin(pluginId).config("headTypes");
   const headTypes = headTypesConfig.parse(headTypesConfigData);
   Object.keys(headTypes).forEach((headTypeName) => {
+    const revalidateOtherObject: RevalidateOther = {};
     const headType = headTypes[headTypeName];
     const { contentTypes } = headType;
+
+    const revalidate = async (fields, contentTypeName: string, entryId: Id) => {
+      const configContentType = contentTypes[contentTypeName];
+      const revalidationFunction =
+        configContentType.revalidateFn ?? fallbackRevalidateFn;
+      const prepareFunction = configContentType.prepareFn;
+
+      if (!prepareFunction) {
+        return;
+      }
+
+      const entry = await strapi.entityService.findOne(
+        contentTypeName,
+        entryId
+      );
+
+      const preparedState = await prepareFunction(strapi, fields, entry);
+      await revalidationFunction(preparedState);
+    };
+
+    Object.keys(contentTypes).forEach((contentTypeName) => {
+      const configContentType = contentTypes[contentTypeName];
+      const contentType = strapi.contentType(contentTypeName);
+
+      const revalidateOn = configContentType.revalidateOn;
+
+      Object.keys(revalidateOn).forEach((revalidateOnContentTypeName) => {
+        const revalidateOnContentType =
+          revalidateOn[revalidateOnContentTypeName];
+        const revalidateOnContentTypeArray = Array.isArray(
+          revalidateOnContentType
+        )
+          ? revalidateOnContentType
+          : [revalidateOnContentType];
+
+        revalidateOtherObject[revalidateOnContentTypeName] = {
+          ...revalidateOtherObject[revalidateOnContentTypeName],
+          [contentTypeName]: revalidateOnContentTypeArray,
+        };
+      });
+    });
+
     Object.keys(contentTypes).forEach((contentTypeName) => {
       const configContentType = contentTypes[contentTypeName];
       const contentType = strapi.contentType(contentTypeName);
@@ -93,11 +513,29 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
           const heads = await getService(strapi, "head").findAllOfType(
             headTypeName
           );
+          const revalidationObject = await findAllEntriesToRevalidate(
+            strapi as any,
+            contentTypeName,
+            entry.id,
+            revalidateOtherObject
+          );
+
           if (prepareFunction) {
             await Promise.all(
               heads.map(async (head) => {
                 const fields = await getService(strapi, "head").getFieldsObject(
                   head.id
+                );
+                await Promise.all(
+                  Object.keys(revalidationObject).map((contentTypeName) => {
+                    const contentTypeRevalidationObject =
+                      revalidationObject[contentTypeName];
+                    return Promise.all(
+                      Array.from(contentTypeRevalidationObject).map((id) => {
+                        return revalidate(fields, contentTypeName, id);
+                      })
+                    );
+                  })
                 );
                 const preparedState = await prepareFunction(
                   strapi,
@@ -108,6 +546,7 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
               })
             );
           }
+
           return result;
         };
       });
@@ -122,6 +561,16 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
           const heads = await getService(strapi, "head").findAllOfType(
             headTypeName
           );
+
+          const revalidationObject = await findAllEntriesToRevalidate(
+            strapi as any,
+            contentTypeName,
+            entry.id,
+            revalidateOtherObject
+          );
+
+          console.log("revalidating", revalidationObject);
+
           // TODO: use state heads
           if (prepareFunction) {
             const revalidatingPromise = Promise.all(
@@ -129,6 +578,19 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
                 const fields = await getService(strapi, "head").getFieldsObject(
                   head.id
                 );
+
+                await Promise.all(
+                  Object.keys(revalidationObject).map((contentTypeName) => {
+                    const contentTypeRevalidationObject =
+                      revalidationObject[contentTypeName];
+                    return Promise.all(
+                      Array.from(contentTypeRevalidationObject).map((id) => {
+                        return revalidate(fields, contentTypeName, id);
+                      })
+                    );
+                  })
+                );
+
                 const preparedState = await prepareFunction(
                   strapi,
                   fields,

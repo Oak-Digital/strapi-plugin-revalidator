@@ -8,6 +8,9 @@ const revalidateOn = z
     /* .default(() => true), */
   })
   .default({});
+export type RevalidateOn = z.infer<typeof revalidateOn>;
+
+
 const fieldTypeType = z.enum(["string"]);
 
 const fieldType = z.object({
