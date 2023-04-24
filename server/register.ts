@@ -7,8 +7,11 @@ import { Id, IStrapi } from "strapi-typed";
 import { STATE_KEY } from "./lib/constants";
 import { RevalidateOn } from "../types/head-type-config";
 import { get, set } from "lodash";
+import { contentTypeDynamicZoneWithRelationPaths, contentTypeRelationPaths } from "./lib/relations";
 
-const fallbackRevalidateFn = async (preparedState) => {
+// TODO: refactor this file
+
+const fallbackRevalidateFn = async (preparedState: any) => {
   try {
     if (typeof preparedState !== "object") {
       return;
@@ -28,154 +31,6 @@ const fallbackRevalidateFn = async (preparedState) => {
   }
 };
 
-const componentHasRelation = (
-  strapi: Strapi,
-  componentName: string,
-  relationContentTypeName: string
-) => {
-  return Object.keys(strapi.components[componentName].attributes).some(
-    (attributeName) => {
-      const attribute =
-        strapi.components[componentName].attributes[attributeName];
-      if (attribute.type === "relation") {
-        if (attribute.relation === relationContentTypeName) {
-          return true;
-        }
-      }
-
-      if (attribute.type === "component") {
-        return componentHasRelation(
-          strapi,
-          attribute.component,
-          relationContentTypeName
-        );
-      }
-
-      return false;
-    }
-  );
-};
-
-const componentRelationPaths = (
-  strapi: Strapi,
-  componentName: string,
-  relationContentTypeName: string
-) => {
-  const paths: string[] = [];
-  Object.keys(strapi.components[componentName].attributes).forEach(
-    (attributeName) => {
-      const attribute =
-        strapi.components[componentName].attributes[attributeName];
-      if (attribute.type === "relation") {
-        if (attribute.target === relationContentTypeName) {
-          paths.push(attributeName);
-        }
-      }
-
-      if (attribute.type === "component") {
-        const componentPaths = componentRelationPaths(
-          strapi,
-          attribute.component,
-          relationContentTypeName
-        );
-        componentPaths.forEach((componentPath) => {
-          paths.push(`${attributeName}.${componentPath}`);
-        });
-      }
-    }
-  );
-  return paths;
-};
-
-const contentTypeHasRelation = (
-  strapi: Strapi,
-  contentTypeName: string,
-  relationContentTypeName: string
-) => {
-  const contentType = strapi.contentType(contentTypeName);
-  return Object.keys(contentType.attributes).some((attributeName) => {
-    const attribute = contentType.attributes[attributeName];
-    if (attribute.type === "relation") {
-      if (attribute.target === relationContentTypeName) {
-        return true;
-      }
-    }
-
-    if (attribute.type === "component") {
-      return componentHasRelation(
-        strapi,
-        attribute.component,
-        relationContentTypeName
-      );
-    }
-
-    if (attribute.type === "dynamiczone") {
-      return attribute.components.some((componentName) => {
-        return componentHasRelation(
-          strapi,
-          componentName,
-          relationContentTypeName
-        );
-      });
-    }
-
-    return false;
-  });
-};
-
-const contentTypeDynamicZoneWithRelationPaths = (
-  strapi: Strapi,
-  contentTypeName: string,
-  relationContentTypeName: string
-) => {
-  const paths: string[] = [];
-  const contentType = strapi.contentType(contentTypeName);
-  Object.keys(contentType.attributes).forEach((attributeName) => {
-    const attribute = contentType.attributes[attributeName];
-    if (attribute.type === "dynamiczone") {
-      attribute.components.forEach((componentName) => {
-        const componentPaths = componentRelationPaths(
-          strapi,
-          componentName,
-          relationContentTypeName
-        );
-        componentPaths.forEach((componentPath) => {
-          paths.push(`${attributeName}::${componentName}.${componentPath}`);
-        });
-      });
-    }
-  });
-  return paths;
-};
-
-const contentTypeRelationPaths = (
-  strapi: Strapi,
-  contentTypeName: string,
-  relationContentTypeName: string
-) => {
-  const paths: string[] = [];
-  const contentType = strapi.contentType(contentTypeName);
-  Object.keys(contentType.attributes).forEach((attributeName) => {
-    const attribute = contentType.attributes[attributeName];
-    if (attribute.type === "relation") {
-      if (attribute.relation === relationContentTypeName) {
-        paths.push(attributeName);
-      }
-    }
-
-    if (attribute.type === "component") {
-      const componentPaths = componentRelationPaths(
-        strapi,
-        attribute.component,
-        relationContentTypeName
-      );
-      componentPaths.forEach((componentPath) => {
-        paths.push(`${attributeName}.${componentPath}`);
-      });
-    }
-  });
-  return paths;
-};
 
 const pathToObjectWithId = (path: string, id: Id) => {
   const obj = set({}, `${path}.id`, id);
