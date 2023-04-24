@@ -13,10 +13,10 @@ This plugin let's you set up different types of heads and define rules for each 
 - [x] Define rules for each head on how strapi should revalidate each content type
 - [x] Define rules for how each content type should be revalidated based on relations
 - [ ] dynamic url builder
-- [ ] Use GET parameters
+- [x] Use GET parameters
 - [ ] Use POST parameters
 - [ ] Manual revalidate button on content types
-- [ ] Heads defined from environment variables
+- [x] Heads defined from environment variables
 
 * Integrations with preview deployments: (Make sure strapi revalidates those too)
   - [ ] Vercel
