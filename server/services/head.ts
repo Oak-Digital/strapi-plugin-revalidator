@@ -25,6 +25,7 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
   },
 
   findAllOfType: async (headType: string) => {
+    const defaultHeads = await getService(strapi, "default-head").findManyOfType(headType);
     const heads = await strapi.entityService.findMany(
       "plugin::revalidator.head",
       {

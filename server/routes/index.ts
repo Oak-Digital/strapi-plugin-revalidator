@@ -1,5 +1,6 @@
 import headRoutes from './head';
 import headTypeRoutes from './head-type';
+import defaultHeads from './default-head';
 
 export default {
   'admin': {
@@ -7,6 +8,7 @@ export default {
     routes: [
       ...headRoutes,
       ...headTypeRoutes,
+      ...defaultHeads,
     ],
   }
 };

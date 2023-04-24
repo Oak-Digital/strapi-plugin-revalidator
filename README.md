@@ -229,16 +229,18 @@ export default ({ env }) => ({
       },
 
       // Hard coded heads - this may be good for monorepos
-      // Not implemented
-      //defaultHeads: {
-      //  myFrontend: [
-      //    {
-      //      // myFrontend's fields
-      //      endpoint: env("FRONTEND_ENDPOINT"),
-      //      secret: env("REVALIDATION_SECRET"),
-      //    },
-      //  ],
-      //},
+      defaultHeads: {
+        myFrontend: [
+          {
+            name: "My primary frontend",
+            // myFrontend's fields
+            fields: {
+              endpoint: env("FRONTEND_ENDPOINT"),
+              secret: env("REVALIDATION_SECRET"),
+            },
+          },
+        ],
+      },
     },
   },
 });

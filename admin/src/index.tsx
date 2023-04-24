@@ -1,9 +1,9 @@
-import { prefixPluginTranslations } from '@strapi/helper-plugin';
+import { prefixPluginTranslations } from "@strapi/helper-plugin";
 
-import pluginPkg from '../../package.json';
-import pluginId from './pluginId';
-import Initializer from './components/Initializer';
-import PluginIcon from './components/PluginIcon';
+import pluginPkg from "../../package.json";
+import pluginId from "./pluginId";
+import Initializer from "./components/Initializer";
+import PluginIcon from "./components/PluginIcon";
 
 const name = pluginPkg.strapi.name;
 
@@ -30,27 +30,47 @@ export default {
     //  ],
     //});
 
-    app.createSettingSection({
-      id: `${pluginId}.plugin.name`,
-      intlLabel: {
+    app.createSettingSection(
+      {
         id: `${pluginId}.plugin.name`,
-        defaultMessage: name,
+        intlLabel: {
+          id: `${pluginId}.plugin.name`,
+          defaultMessage: name,
+        },
       },
-    }, [
+      [
         {
           id: `${pluginId}.plugin.heads`,
           intlLabel: {
             id: `${pluginId}.titles.heads`,
-            defaultMessage: 'Heads',
+            defaultMessage: "Heads",
           },
           to: `/settings/${pluginId}/heads`,
           Component: async () => {
-            const component = await import(/* webpackChunkName: "revalidator-heads" */ './pages/Heads');
+            const component = await import(
+              /* webpackChunkName: "revalidator-heads" */ "./pages/Heads"
+            );
 
             return component;
-          }
+          },
+        },
+        {
+          id: `${pluginId}.plugin.default-heads`,
+          intlLabel: {
+            id: `${pluginId}.titles.default-heads`,
+            defaultMessage: "Default Heads",
+          },
+          to: `/settings/${pluginId}/default-heads`,
+          Component: async () => {
+            const component = await import(
+              /* webpackChunkName: "revalidator-default-heads" */ "./pages/DefaultHeads"
+            );
+
+            return component;
+          },
         }
-      ])
+      ]
+    );
 
     const plugin = {
       id: pluginId,

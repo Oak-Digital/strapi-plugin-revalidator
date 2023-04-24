@@ -1,5 +1,5 @@
 import { Strapi } from "@strapi/strapi";
-import axios from "axios";
+import axios, { isAxiosError } from "axios";
 import pluginId from "./pluginId";
 import { headTypesConfig } from "../types/config";
 import { getService } from "./lib/service";
@@ -7,7 +7,11 @@ import { Id, IStrapi } from "strapi-typed";
 import { STATE_KEY } from "./lib/constants";
 import { RevalidateOn } from "../types/head-type-config";
 import { get, set } from "lodash";
-import { contentTypeDynamicZoneWithRelationPaths, contentTypeRelationPaths } from "./lib/relations";
+import {
+  contentTypeDynamicZoneWithRelationPaths,
+  contentTypeRelationPaths,
+} from "./lib/relations";
+import { DefaultHead } from "../types/default-head";
 
 // TODO: refactor this file
 
@@ -27,10 +31,14 @@ const fallbackRevalidateFn = async (preparedState: any) => {
       data: body,
     });
   } catch (e) {
-    console.error(e);
+    if (!isAxiosError(e)) {
+      console.error('Something went wrong while revalidating, state: ', preparedState, 'error: ', e);
+      return;
+    }
+
+    console.error("Could not revalidate, state:", preparedState);
   }
 };
-
 
 const pathToObjectWithId = (path: string, id: Id) => {
   const obj = set({}, `${path}.id`, id);
@@ -149,10 +157,15 @@ const findEntriesToRevalidate = async (
               }
             );
 
-            const dynamiczonePaths = contentTypeDynamicZoneWithRelationPaths(strapi, contentTypeName, otherContentTypeName);
+            const dynamiczonePaths = contentTypeDynamicZoneWithRelationPaths(
+              strapi,
+              contentTypeName,
+              otherContentTypeName
+            );
             const dynamiczonePopulatePaths = dynamiczonePaths.map((path) => {
               const [attributeName, componentAndPath] = path.split("::");
-              const [componentCategory, componentName, ...restPath] = componentAndPath.split(".");
+              const [componentCategory, componentName, ...restPath] =
+                componentAndPath.split(".");
               return [attributeName, ...restPath].join(".");
             });
             const dynamiczoneEntries = await strapi.entityService.findMany(
@@ -162,21 +175,28 @@ const findEntriesToRevalidate = async (
                 populate: dynamiczonePopulatePaths,
               }
             );
-            const filteredDynamiczoneEntries = dynamiczoneEntries.filter((entry) => {
-              // filter for each attribute
-              // filter for each component
+            const filteredDynamiczoneEntries = dynamiczoneEntries.filter(
+              (entry) => {
+                // filter for each attribute
+                // filter for each component
 
-              return dynamiczonePaths.some((path) => {
-                const [attributeName, componentAndPath] = path.split("::");
-                const [componentCategory, componentName, ...restPath] = componentAndPath.split(".");
-                const componentPath = restPath.join(".");
-                const attribute = entry[attributeName];
-                return attribute.some((component: any) => {
-                  const id = get(component, `${componentPath}.id`);
-                  return component.__component === `${componentCategory}.${componentName}` && id === entryId;
+                return dynamiczonePaths.some((path) => {
+                  const [attributeName, componentAndPath] = path.split("::");
+                  const [componentCategory, componentName, ...restPath] =
+                    componentAndPath.split(".");
+                  const componentPath = restPath.join(".");
+                  const attribute = entry[attributeName];
+                  return attribute.some((component: any) => {
+                    const id = get(component, `${componentPath}.id`);
+                    return (
+                      component.__component ===
+                        `${componentCategory}.${componentName}` &&
+                      id === entryId
+                    );
+                  });
                 });
-              });
-            })
+              }
+            );
             entries.push(...filteredDynamiczoneEntries);
           } else {
             entries = await strapi.entityService.findMany(
@@ -327,16 +347,16 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
             event.params.where.id
           );
 
-          const heads = await getService(strapi, "head").findAllOfType(
-            headTypeName
-          );
+          const headService = getService(strapi, "head");
+          const defaultHeadService = getService(strapi, "default-head");
+          const heads = await headService.findAllOfType(headTypeName);
+          const defaultHeads: DefaultHead[] =
+            await defaultHeadService.findManyOfType(headTypeName);
           const entry = await entryPromise;
           if (prepareFunction) {
             await Promise.all(
               heads.map(async (head) => {
-                const fields = await getService(strapi, "head").getFieldsObject(
-                  head.id
-                );
+                const fields = await headService.getFieldsObject(head.id);
                 const entries = await entryPromise;
                 const preparedState = await prepareFunction(
                   strapi,
@@ -349,6 +369,21 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
                   preparedState,
                 });
                 /* return { head, preparedState }; */
+              })
+            );
+            await Promise.all(
+              defaultHeads.map(async (defaultHead) => {
+                const fields = defaultHead.fields;
+                const preparedState = await prepareFunction(
+                  strapi,
+                  fields,
+                  entry
+                );
+                event.state[STATE_KEY].push({
+                  head: defaultHead,
+                  fields,
+                  preparedState,
+                });
               })
             );
           }
@@ -365,9 +400,11 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
           /* const heads = event.state[STATE_KEY].map((state) => state.head); */
 
           const entry = event.result;
-          const heads = await getService(strapi, "head").findAllOfType(
-            headTypeName
-          );
+          const headService = getService(strapi, "head");
+          const defaultHeadService = getService(strapi, "default-head");
+          const heads = await headService.findAllOfType(headTypeName);
+          const defaultHeads: DefaultHead[] =
+            await defaultHeadService.findManyOfType(headTypeName);
           const revalidationObject = await findAllEntriesToRevalidate(
             strapi as any,
             contentTypeName,
@@ -378,9 +415,7 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
           if (prepareFunction) {
             await Promise.all(
               heads.map(async (head) => {
-                const fields = await getService(strapi, "head").getFieldsObject(
-                  head.id
-                );
+                const fields = await headService.getFieldsObject(head.id);
                 await Promise.all(
                   Object.keys(revalidationObject).map((contentTypeName) => {
                     const contentTypeRevalidationObject =
@@ -395,6 +430,27 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
                 const preparedState = await prepareFunction(
                   strapi,
                   fields,
+                  entry
+                );
+                await revalidationFunction(preparedState);
+              })
+            );
+            await Promise.all(
+              defaultHeads.map(async (head) => {
+                await Promise.all(
+                  Object.keys(revalidationObject).map((contentTypeName) => {
+                    const contentTypeRevalidationObject =
+                      revalidationObject[contentTypeName];
+                    return Promise.all(
+                      Array.from(contentTypeRevalidationObject).map((id) => {
+                        return revalidate(head.fields, contentTypeName, id);
+                      })
+                    );
+                  })
+                );
+                const preparedState = await prepareFunction(
+                  strapi,
+                  head.fields,
                   entry
                 );
                 await revalidationFunction(preparedState);
@@ -413,9 +469,11 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
           const result = await oldFunction(event);
 
           const entry = event.result;
-          const heads = await getService(strapi, "head").findAllOfType(
-            headTypeName
-          );
+          const headService = getService(strapi, "head");
+          const defaultHeadService = getService(strapi, "default-head");
+          const heads = await headService.findAllOfType(headTypeName);
+          const defaultHeads: DefaultHead[] =
+            await defaultHeadService.findManyOfType(headTypeName);
 
           const revalidationObject = await findAllEntriesToRevalidate(
             strapi as any,
@@ -430,9 +488,7 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
           if (prepareFunction) {
             const revalidatingPromise = Promise.all(
               heads.map(async (head) => {
-                const fields = await getService(strapi, "head").getFieldsObject(
-                  head.id
-                );
+                const fields = await headService.getFieldsObject(head.id);
 
                 await Promise.all(
                   Object.keys(revalidationObject).map((contentTypeName) => {
@@ -455,14 +511,37 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
               })
             );
 
-            const revalidatingBeforePromise = event.state[STATE_KEY].map(
-              async (state) => {
-                const { head, fields, preparedState } = state;
+            const revalidatingDefaultHeadsPromise = Promise.all(
+              defaultHeads.map(async (defaultHead) => {
+                await Promise.all(
+                  Object.keys(revalidationObject).map((contentTypeName) => {
+                    const contentTypeRevalidationObject =
+                      revalidationObject[contentTypeName];
+                    return Promise.all(
+                      Array.from(contentTypeRevalidationObject).map((id) => {
+                        return revalidate(defaultHead.fields, contentTypeName, id);
+                      })
+                    );
+                  })
+                );
+
+                const preparedState = await prepareFunction(
+                  strapi,
+                  defaultHead.fields,
+                  entry
+                );
                 await revalidationFunction(preparedState);
-              }
+              })
             );
 
-            await Promise.all([revalidatingPromise, revalidatingBeforePromise]);
+            const revalidatingBeforePromise = Promise.all(
+              event.state[STATE_KEY].map(async (state) => {
+                const { head, fields, preparedState } = state;
+                await revalidationFunction(preparedState);
+              })
+            );
+
+            await Promise.all([revalidatingPromise, revalidatingBeforePromise, revalidatingDefaultHeadsPromise]);
           }
 
           return result;
