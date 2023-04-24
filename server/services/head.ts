@@ -136,4 +136,28 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
 
     return head;
   },
+
+  delete: async (id: Id) => {
+    const service = getService(strapi, "head");
+    const fieldService = getService(strapi, "head-field");
+    // delete the head
+    const head = await strapi.entityService.delete(
+      "plugin::revalidator.head",
+      id,
+      {
+        populate: {
+          fields: true,
+        },
+      }
+    );
+    /* const head = await service.findOne(id); */
+
+    // const delete the head's fields
+    await Promise.all(head.fields?.map(async (field: any) => {
+      /* console.log(`deleting field ${field.id}`) */
+      await fieldService.deleteById(field.id);
+    }));
+
+    return head;
+  },
 });

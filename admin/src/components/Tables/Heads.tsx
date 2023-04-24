@@ -18,10 +18,11 @@ import {
   PageLink,
   Dots,
 } from "@strapi/design-system";
-import { useHeads } from "../../lib/queries/head";
+import { useDeleteHead, useHeads } from "../../lib/queries/head";
 import pluginId from "../../pluginId";
 import { Pencil } from "@strapi/icons";
 import { useRouteMatch } from "react-router-dom";
+import { Trash } from "@strapi/icons";
 
 const HeadsTable = () => {
   const match = useRouteMatch<{ page: string }>(
@@ -29,6 +30,7 @@ const HeadsTable = () => {
   );
   const pageNumber = parseInt(match?.params.page ?? "1");
   const { data: heads } = useHeads(pageNumber);
+  const { mutateAsync: deleteHead } = useDeleteHead();
 
   return (
     <>
@@ -60,6 +62,7 @@ const HeadsTable = () => {
                   <Link to={`/settings/${pluginId}/heads/edit/${head.id}`}>
                     <IconButton label="Edit" noBorder icon={<Pencil />} />
                   </Link>
+                  <IconButton label="Delete" noBorder icon={<Trash />} onClick={() => deleteHead({ id: head.id })} />
                 </Flex>
               </Td>
             </Tr>

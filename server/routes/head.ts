@@ -33,6 +33,14 @@ const routes: StrapiRoute[] = [
       policies: [],
     },
   },
+  {
+    method: "DELETE",
+    path: "/heads/:id",
+    handler: "head.delete",
+    config: {
+      policies: [],
+    },
+  },
 ];
 
 export default routes;

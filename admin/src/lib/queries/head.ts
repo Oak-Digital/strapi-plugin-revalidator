@@ -6,6 +6,7 @@ import {
 } from "react-query";
 import { request } from "@strapi/helper-plugin";
 import pluginId from "../../pluginId";
+import { Id } from "strapi-typed";
 
 const getHeadKey = (id: number) => {
   return ["heads", "head", id];
@@ -69,7 +70,7 @@ export const useCreateHead = () => {
 
 export const useUpdateHead = () => {
   const queryClient = useQueryClient();
-  return useMutation<any, any, { id: string | number; data: any }>(
+  return useMutation<any, any, { id: Id; data: any }>(
     ({ id, data }) => {
       return request(`/${pluginId}/heads/${id}`, {
         method: "PUT",
@@ -80,8 +81,33 @@ export const useUpdateHead = () => {
       onSuccess: (data, variables) => {
         // TODO: Make sure the API returns the correct data to set the query data
         /* queryClient.setQueryData(getHeadKey(variables.id), data); */
-        const id = typeof variables.id === "string" ? parseInt(variables.id) : variables.id;
+        const id =
+          typeof variables.id === "string"
+            ? parseInt(variables.id)
+            : variables.id;
         queryClient.invalidateQueries(getHeadKey(id));
+        invalidateHeadPages(queryClient);
+      },
+    }
+  );
+};
+
+export const useDeleteHead = () => {
+  const queryClient = useQueryClient();
+  return useMutation<
+    any,
+    any,
+    {
+      id: Id;
+    }
+  >(
+    ({ id }) => {
+      return request(`/${pluginId}/heads/${id}`, {
+        method: "DELETE",
+      });
+    },
+    {
+      onSettled: (data, variables) => {
         invalidateHeadPages(queryClient);
       },
     }

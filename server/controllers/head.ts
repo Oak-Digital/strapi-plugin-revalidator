@@ -112,5 +112,9 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
     ctx.send(head);
   },
 
-  delete: async (ctx: StrapiRequestContext) => {},
+  delete: async (ctx: StrapiRequestContext) => {
+    const { id } = ctx.params;
+    await getService(strapi, "head").delete(id);
+    ctx.send({ id });
+  },
 });

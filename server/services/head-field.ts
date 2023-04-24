@@ -14,7 +14,7 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
       }
     );
 
-    return field[0];
+    return field?.[0];
   },
 
   create: async (headId: Id, key: string, value: string) => {
@@ -46,6 +46,10 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
     );
 
     return newField;
+  },
+
+  deleteById: async (id: Id) => {
+    await strapi.entityService.delete("plugin::revalidator.head-field", id);
   },
 
   delete: async (headId: Id, key: string) => {
