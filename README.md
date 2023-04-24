@@ -11,6 +11,7 @@ This plugin let's you set up different types of heads and define rules for each 
 
 - [x] Define multiple head types
 - [x] Define rules for each head on how strapi should revalidate each content type
+- [x] Define rules for how each content type should be revalidated based on relations
 - [ ] dynamic url builder
 - [ ] Use GET parameters
 - [ ] Use POST parameters
@@ -183,29 +184,29 @@ export default ({ env }) => ({
                   console.error(e);
                 }
               },
-              // revalidateOn: {
-              //   page: {
-              //     ifReferenced: true,
-              //     revalidationType: 'soft',
-              //   },
+              revalidateOn: {
+                page: {
+                  ifReferenced: true,
+                  revalidationType: 'soft',
+                },
 
-              //   article: [
-              //     {
-              //       ifReferenced: true,
-              //     },
-              //     {
-              //       // This should probably be changed in later versions, so it doesn't run on ALL pages
-              //       predicate(page, article) {
-              //         return page.attributes.content.some((block) => block.__component === 'LatestArticles');
-              //       },
-              //     },
-              //   ],
+                article: [
+                  {
+                    ifReferenced: true,
+                  },
+                  // {
+                  //   // This should probably be changed in later versions, so it doesn't run on ALL pages
+                  //   predicate(page, article) {
+                  //     return page.attributes.content.some((block) => block.__component === 'LatestArticles');
+                  //   },
+                  // },
+                ],
 
-              //   quote: {
-              //     ifReferenced: true,
-              //     revalidationType: 'soft',
-              //   },
-              // },
+                quote: {
+                  ifReferenced: true,
+                  revalidationType: 'soft',
+                },
+              },
             },
             'api::quote.quote': {
               prepareFn: async (strapi, fields, quote) => {
