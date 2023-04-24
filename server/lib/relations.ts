@@ -1,6 +1,7 @@
 import { Strapi } from "@strapi/strapi";
+import { memoize } from "lodash";
 
-export const componentHasRelation = (
+const componentHasRelationFunction = (
   strapi: Strapi,
   componentName: string,
   relationContentTypeName: string
@@ -28,7 +29,14 @@ export const componentHasRelation = (
   );
 };
 
-export const componentRelationPaths = (
+export const componentHasRelation = memoize(
+  componentHasRelationFunction,
+  (strapi, componentName, relationContentTypeName) => {
+    return `${componentName} ${relationContentTypeName}`;
+  }
+);
+
+const componentRelationPathsFunction = (
   strapi: Strapi,
   componentName: string,
   relationContentTypeName: string
@@ -59,7 +67,14 @@ export const componentRelationPaths = (
   return paths;
 };
 
-export const contentTypeHasRelation = (
+export const componentRelationPaths = memoize(
+  componentRelationPathsFunction,
+  (strapi, componentName, relationContentTypeName) => {
+    return `${componentName} ${relationContentTypeName}`;
+  }
+);
+
+const contentTypeHasRelationFunction = (
   strapi: Strapi,
   contentTypeName: string,
   relationContentTypeName: string
@@ -95,7 +110,14 @@ export const contentTypeHasRelation = (
   });
 };
 
-export const contentTypeDynamicZoneWithRelationPaths = (
+export const contentTypeHasRelation = memoize(
+  contentTypeHasRelationFunction,
+  (strapi, contentTypeName, relationContentTypeName) => {
+    return `${contentTypeName} ${relationContentTypeName}`;
+  }
+);
+
+const contentTypeDynamicZoneWithRelationPathsFunction = (
   strapi: Strapi,
   contentTypeName: string,
   relationContentTypeName: string
@@ -120,7 +142,14 @@ export const contentTypeDynamicZoneWithRelationPaths = (
   return paths;
 };
 
-export const contentTypeRelationPaths = (
+export const contentTypeDynamicZoneWithRelationPaths = memoize(
+  contentTypeDynamicZoneWithRelationPathsFunction,
+  (strapi, contentTypeName, relationContentTypeName) => {
+    return `${contentTypeName} ${relationContentTypeName}`;
+  }
+);
+
+const contentTypeRelationPathsFunction = (
   strapi: Strapi,
   contentTypeName: string,
   relationContentTypeName: string
@@ -148,3 +177,10 @@ export const contentTypeRelationPaths = (
   });
   return paths;
 };
+
+export const contentTypeRelationPaths = memoize(
+  contentTypeRelationPathsFunction,
+  (strapi, contentTypeName, relationContentTypeName) => {
+    return `${contentTypeName} ${relationContentTypeName}`;
+  }
+);
