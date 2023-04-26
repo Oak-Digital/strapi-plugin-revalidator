@@ -5,7 +5,12 @@ import { headTypesConfig } from "../types/config";
 import { getService } from "./lib/service";
 import { Id, IStrapi } from "strapi-typed";
 import { STATE_KEY } from "./lib/constants";
-import { RevalidateOn } from "../types/head-type-config";
+import {
+  ContentTypeConfig,
+  ContentTypesConfig,
+  HeadTypeConfig,
+  RevalidateOn,
+} from "../types/head-type-config";
 import { get, set } from "lodash";
 import {
   contentTypeDynamicZoneWithRelationPaths,
@@ -32,7 +37,12 @@ const fallbackRevalidateFn = async (preparedState: any) => {
     });
   } catch (e) {
     if (!isAxiosError(e)) {
-      console.error('Something went wrong while revalidating, state: ', preparedState, 'error: ', e);
+      console.error(
+        "Something went wrong while revalidating, state: ",
+        preparedState,
+        "error: ",
+        e
+      );
       return;
     }
 
@@ -278,295 +288,327 @@ const findAllEntriesToRevalidate = async (
   return revalidateObjectToRevalidateOnlyObject(allEntriesToRevalidate);
 };
 
+const revalidate = async (
+  configs: ContentTypesConfig,
+  fields: Record<string, string>,
+  contentTypeName: string,
+  entryId: Id
+) => {
+  const config = configs[contentTypeName];
+  const revalidationFunction = config.revalidateFn ?? fallbackRevalidateFn;
+  const prepareFunction = config.prepareFn;
+
+  if (!prepareFunction) {
+    return;
+  }
+
+  const entry = await strapi.entityService.findOne(contentTypeName, entryId);
+
+  const preparedState = await prepareFunction(strapi, fields, entry);
+  await revalidationFunction(preparedState);
+};
+
+const registerHeadType = (
+  strapi: Strapi | (IStrapi & { entityService: any }),
+  headTypeName: string,
+  headType: HeadTypeConfig
+) => {
+  const revalidateOtherObject: RevalidateOther = {};
+  const { contentTypes } = headType;
+
+  Object.keys(contentTypes).forEach((contentTypeName) => {
+    const configContentType = contentTypes[contentTypeName];
+    const contentType = strapi.contentType(contentTypeName);
+
+    const revalidateOn = configContentType.revalidateOn;
+
+    Object.keys(revalidateOn).forEach((revalidateOnContentTypeName) => {
+      const revalidateOnContentType = revalidateOn[revalidateOnContentTypeName];
+      const revalidateOnContentTypeArray = Array.isArray(
+        revalidateOnContentType
+      )
+        ? revalidateOnContentType
+        : [revalidateOnContentType];
+
+      revalidateOtherObject[revalidateOnContentTypeName] = {
+        ...revalidateOtherObject[revalidateOnContentTypeName],
+        [contentTypeName]: revalidateOnContentTypeArray,
+      };
+    });
+  });
+
+  Object.keys(contentTypes).forEach((contentTypeName) => {
+    const configContentType = contentTypes[contentTypeName];
+    const contentType = strapi.contentType(contentTypeName);
+    const revalidationFunction =
+      configContentType.revalidateFn ?? fallbackRevalidateFn;
+    const prepareFunction = configContentType.prepareFn;
+
+    ["beforeUpdate", "beforeDelete"].forEach((lifecycleName) => {
+      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
+      contentType.lifecycles[lifecycleName] = async (event) => {
+        // find the content type entry
+        event.state = { [STATE_KEY]: [] };
+        const oldFunctionPromise = oldFunction(event);
+        const entryPromise = strapi.entityService.findOne(
+          contentTypeName,
+          event.params.where.id
+        );
+
+        const headService = getService(strapi, "head");
+        const defaultHeadService = getService(strapi, "default-head");
+        const heads = await headService.findAllOfType(headTypeName);
+        const defaultHeads: DefaultHead[] =
+          await defaultHeadService.findManyOfType(headTypeName);
+        const entry = await entryPromise;
+        if (prepareFunction) {
+          await Promise.all(
+            heads.map(async (head) => {
+              const fields = await headService.getFieldsObject(head.id);
+              const entries = await entryPromise;
+              const preparedState = await prepareFunction(
+                strapi,
+                fields,
+                entry
+              );
+              event.state[STATE_KEY].push({
+                head,
+                fields,
+                preparedState,
+              });
+              /* return { head, preparedState }; */
+            })
+          );
+          await Promise.all(
+            defaultHeads.map(async (defaultHead) => {
+              const fields = defaultHead.fields;
+              const preparedState = await prepareFunction(
+                strapi,
+                fields,
+                entry
+              );
+              event.state[STATE_KEY].push({
+                head: defaultHead,
+                fields,
+                preparedState,
+              });
+            })
+          );
+        }
+        await oldFunctionPromise;
+      };
+    });
+
+    ["afterCreate"].forEach((lifecycleName) => {
+      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
+      contentType.lifecycles[lifecycleName] = async (event) => {
+        // call the old function
+        const result = await oldFunction(event);
+
+        /* const heads = event.state[STATE_KEY].map((state) => state.head); */
+
+        const entry = event.result;
+        const headService = getService(strapi, "head");
+        const defaultHeadService = getService(strapi, "default-head");
+        const heads = await headService.findAllOfType(headTypeName);
+        const defaultHeads: DefaultHead[] =
+          await defaultHeadService.findManyOfType(headTypeName);
+        const revalidationObject = await findAllEntriesToRevalidate(
+          strapi as any,
+          contentTypeName,
+          entry.id,
+          revalidateOtherObject
+        );
+
+        if (prepareFunction) {
+          await Promise.all(
+            heads.map(async (head) => {
+              const fields = await headService.getFieldsObject(head.id);
+              await Promise.all(
+                Object.keys(revalidationObject).map((contentTypeName) => {
+                  const contentTypeRevalidationObject =
+                    revalidationObject[contentTypeName];
+                  return Promise.all(
+                    Array.from(contentTypeRevalidationObject).map((id) => {
+                      return revalidate(
+                        contentTypes,
+                        fields,
+                        contentTypeName,
+                        id
+                      );
+                    })
+                  );
+                })
+              );
+              const preparedState = await prepareFunction(
+                strapi,
+                fields,
+                entry
+              );
+              await revalidationFunction(preparedState);
+            })
+          );
+          await Promise.all(
+            defaultHeads.map(async (head) => {
+              await Promise.all(
+                Object.keys(revalidationObject).map((contentTypeName) => {
+                  const contentTypeRevalidationObject =
+                    revalidationObject[contentTypeName];
+                  return Promise.all(
+                    Array.from(contentTypeRevalidationObject).map((id) => {
+                      return revalidate(
+                        contentTypes,
+                        head.fields,
+                        contentTypeName,
+                        id
+                      );
+                    })
+                  );
+                })
+              );
+              const preparedState = await prepareFunction(
+                strapi,
+                head.fields,
+                entry
+              );
+              await revalidationFunction(preparedState);
+            })
+          );
+        }
+
+        return result;
+      };
+    });
+
+    ["afterUpdate"].forEach((lifecycleName) => {
+      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
+      contentType.lifecycles[lifecycleName] = async (event) => {
+        // call the old function
+        const result = await oldFunction(event);
+
+        const entry = event.result;
+        const headService = getService(strapi, "head");
+        const defaultHeadService = getService(strapi, "default-head");
+        const heads = await headService.findAllOfType(headTypeName);
+        const defaultHeads: DefaultHead[] =
+          await defaultHeadService.findManyOfType(headTypeName);
+
+        const revalidationObject = await findAllEntriesToRevalidate(
+          strapi as any,
+          contentTypeName,
+          entry.id,
+          revalidateOtherObject
+        );
+
+        console.log("revalidating", revalidationObject);
+
+        // TODO: use state heads
+        if (prepareFunction) {
+          const revalidatingPromise = Promise.all(
+            heads.map(async (head) => {
+              const fields = await headService.getFieldsObject(head.id);
+
+              await Promise.all(
+                Object.keys(revalidationObject).map((contentTypeName) => {
+                  const contentTypeRevalidationObject =
+                    revalidationObject[contentTypeName];
+                  return Promise.all(
+                    Array.from(contentTypeRevalidationObject).map((id) => {
+                      return revalidate(
+                        contentTypes,
+                        fields,
+                        contentTypeName,
+                        id
+                      );
+                    })
+                  );
+                })
+              );
+
+              const preparedState = await prepareFunction(
+                strapi,
+                fields,
+                entry
+              );
+              await revalidationFunction(preparedState);
+            })
+          );
+
+          const revalidatingDefaultHeadsPromise = Promise.all(
+            defaultHeads.map(async (defaultHead) => {
+              await Promise.all(
+                Object.keys(revalidationObject).map((contentTypeName) => {
+                  const contentTypeRevalidationObject =
+                    revalidationObject[contentTypeName];
+                  return Promise.all(
+                    Array.from(contentTypeRevalidationObject).map((id) => {
+                      return revalidate(
+                        contentTypes,
+                        defaultHead.fields,
+                        contentTypeName,
+                        id
+                      );
+                    })
+                  );
+                })
+              );
+
+              const preparedState = await prepareFunction(
+                strapi,
+                defaultHead.fields,
+                entry
+              );
+              await revalidationFunction(preparedState);
+            })
+          );
+
+          const revalidatingBeforePromise = Promise.all(
+            event.state[STATE_KEY].map(async (state) => {
+              const { head, fields, preparedState } = state;
+              await revalidationFunction(preparedState);
+            })
+          );
+
+          await Promise.all([
+            revalidatingPromise,
+            revalidatingBeforePromise,
+            revalidatingDefaultHeadsPromise,
+          ]);
+        }
+
+        return result;
+      };
+    });
+
+    ["afterDelete"].forEach((lifecycleName) => {
+      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
+      contentType.lifecycles[lifecycleName] = async (event) => {
+        // call the old function
+        const result = await oldFunction(event);
+
+        if (prepareFunction) {
+          const revalidatingBeforePromise = Promise.all(
+            event.state[STATE_KEY].map(async (state) => {
+              const { head, fields, preparedState } = state;
+              await revalidationFunction(preparedState);
+            })
+          );
+
+          await revalidatingBeforePromise;
+        }
+        return result;
+      };
+    });
+  });
+};
+
 export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
   // registeration phase
   // Register configuration hooks in the lifecycles of content types
   const headTypesConfigData = strapi.plugin(pluginId).config("headTypes");
   const headTypes = headTypesConfig.parse(headTypesConfigData);
   Object.keys(headTypes).forEach((headTypeName) => {
-    const revalidateOtherObject: RevalidateOther = {};
     const headType = headTypes[headTypeName];
-    const { contentTypes } = headType;
-
-    const revalidate = async (fields, contentTypeName: string, entryId: Id) => {
-      const configContentType = contentTypes[contentTypeName];
-      const revalidationFunction =
-        configContentType.revalidateFn ?? fallbackRevalidateFn;
-      const prepareFunction = configContentType.prepareFn;
-
-      if (!prepareFunction) {
-        return;
-      }
-
-      const entry = await strapi.entityService.findOne(
-        contentTypeName,
-        entryId
-      );
-
-      const preparedState = await prepareFunction(strapi, fields, entry);
-      await revalidationFunction(preparedState);
-    };
-
-    Object.keys(contentTypes).forEach((contentTypeName) => {
-      const configContentType = contentTypes[contentTypeName];
-      const contentType = strapi.contentType(contentTypeName);
-
-      const revalidateOn = configContentType.revalidateOn;
-
-      Object.keys(revalidateOn).forEach((revalidateOnContentTypeName) => {
-        const revalidateOnContentType =
-          revalidateOn[revalidateOnContentTypeName];
-        const revalidateOnContentTypeArray = Array.isArray(
-          revalidateOnContentType
-        )
-          ? revalidateOnContentType
-          : [revalidateOnContentType];
-
-        revalidateOtherObject[revalidateOnContentTypeName] = {
-          ...revalidateOtherObject[revalidateOnContentTypeName],
-          [contentTypeName]: revalidateOnContentTypeArray,
-        };
-      });
-    });
-
-    Object.keys(contentTypes).forEach((contentTypeName) => {
-      const configContentType = contentTypes[contentTypeName];
-      const contentType = strapi.contentType(contentTypeName);
-      const revalidationFunction =
-        configContentType.revalidateFn ?? fallbackRevalidateFn;
-      const prepareFunction = configContentType.prepareFn;
-
-      ["beforeUpdate", "beforeDelete"].forEach((lifecycleName) => {
-        const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
-        contentType.lifecycles[lifecycleName] = async (event) => {
-          // find the content type entry
-          event.state = { [STATE_KEY]: [] };
-          const oldFunctionPromise = oldFunction(event);
-          const entryPromise = strapi.entityService.findOne(
-            contentTypeName,
-            event.params.where.id
-          );
-
-          const headService = getService(strapi, "head");
-          const defaultHeadService = getService(strapi, "default-head");
-          const heads = await headService.findAllOfType(headTypeName);
-          const defaultHeads: DefaultHead[] =
-            await defaultHeadService.findManyOfType(headTypeName);
-          const entry = await entryPromise;
-          if (prepareFunction) {
-            await Promise.all(
-              heads.map(async (head) => {
-                const fields = await headService.getFieldsObject(head.id);
-                const entries = await entryPromise;
-                const preparedState = await prepareFunction(
-                  strapi,
-                  fields,
-                  entry
-                );
-                event.state[STATE_KEY].push({
-                  head,
-                  fields,
-                  preparedState,
-                });
-                /* return { head, preparedState }; */
-              })
-            );
-            await Promise.all(
-              defaultHeads.map(async (defaultHead) => {
-                const fields = defaultHead.fields;
-                const preparedState = await prepareFunction(
-                  strapi,
-                  fields,
-                  entry
-                );
-                event.state[STATE_KEY].push({
-                  head: defaultHead,
-                  fields,
-                  preparedState,
-                });
-              })
-            );
-          }
-          await oldFunctionPromise;
-        };
-      });
-
-      ["afterCreate"].forEach((lifecycleName) => {
-        const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
-        contentType.lifecycles[lifecycleName] = async (event) => {
-          // call the old function
-          const result = await oldFunction(event);
-
-          /* const heads = event.state[STATE_KEY].map((state) => state.head); */
-
-          const entry = event.result;
-          const headService = getService(strapi, "head");
-          const defaultHeadService = getService(strapi, "default-head");
-          const heads = await headService.findAllOfType(headTypeName);
-          const defaultHeads: DefaultHead[] =
-            await defaultHeadService.findManyOfType(headTypeName);
-          const revalidationObject = await findAllEntriesToRevalidate(
-            strapi as any,
-            contentTypeName,
-            entry.id,
-            revalidateOtherObject
-          );
-
-          if (prepareFunction) {
-            await Promise.all(
-              heads.map(async (head) => {
-                const fields = await headService.getFieldsObject(head.id);
-                await Promise.all(
-                  Object.keys(revalidationObject).map((contentTypeName) => {
-                    const contentTypeRevalidationObject =
-                      revalidationObject[contentTypeName];
-                    return Promise.all(
-                      Array.from(contentTypeRevalidationObject).map((id) => {
-                        return revalidate(fields, contentTypeName, id);
-                      })
-                    );
-                  })
-                );
-                const preparedState = await prepareFunction(
-                  strapi,
-                  fields,
-                  entry
-                );
-                await revalidationFunction(preparedState);
-              })
-            );
-            await Promise.all(
-              defaultHeads.map(async (head) => {
-                await Promise.all(
-                  Object.keys(revalidationObject).map((contentTypeName) => {
-                    const contentTypeRevalidationObject =
-                      revalidationObject[contentTypeName];
-                    return Promise.all(
-                      Array.from(contentTypeRevalidationObject).map((id) => {
-                        return revalidate(head.fields, contentTypeName, id);
-                      })
-                    );
-                  })
-                );
-                const preparedState = await prepareFunction(
-                  strapi,
-                  head.fields,
-                  entry
-                );
-                await revalidationFunction(preparedState);
-              })
-            );
-          }
-
-          return result;
-        };
-      });
-
-      ["afterUpdate"].forEach((lifecycleName) => {
-        const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
-        contentType.lifecycles[lifecycleName] = async (event) => {
-          // call the old function
-          const result = await oldFunction(event);
-
-          const entry = event.result;
-          const headService = getService(strapi, "head");
-          const defaultHeadService = getService(strapi, "default-head");
-          const heads = await headService.findAllOfType(headTypeName);
-          const defaultHeads: DefaultHead[] =
-            await defaultHeadService.findManyOfType(headTypeName);
-
-          const revalidationObject = await findAllEntriesToRevalidate(
-            strapi as any,
-            contentTypeName,
-            entry.id,
-            revalidateOtherObject
-          );
-
-          console.log("revalidating", revalidationObject);
-
-          // TODO: use state heads
-          if (prepareFunction) {
-            const revalidatingPromise = Promise.all(
-              heads.map(async (head) => {
-                const fields = await headService.getFieldsObject(head.id);
-
-                await Promise.all(
-                  Object.keys(revalidationObject).map((contentTypeName) => {
-                    const contentTypeRevalidationObject =
-                      revalidationObject[contentTypeName];
-                    return Promise.all(
-                      Array.from(contentTypeRevalidationObject).map((id) => {
-                        return revalidate(fields, contentTypeName, id);
-                      })
-                    );
-                  })
-                );
-
-                const preparedState = await prepareFunction(
-                  strapi,
-                  fields,
-                  entry
-                );
-                await revalidationFunction(preparedState);
-              })
-            );
-
-            const revalidatingDefaultHeadsPromise = Promise.all(
-              defaultHeads.map(async (defaultHead) => {
-                await Promise.all(
-                  Object.keys(revalidationObject).map((contentTypeName) => {
-                    const contentTypeRevalidationObject =
-                      revalidationObject[contentTypeName];
-                    return Promise.all(
-                      Array.from(contentTypeRevalidationObject).map((id) => {
-                        return revalidate(defaultHead.fields, contentTypeName, id);
-                      })
-                    );
-                  })
-                );
-
-                const preparedState = await prepareFunction(
-                  strapi,
-                  defaultHead.fields,
-                  entry
-                );
-                await revalidationFunction(preparedState);
-              })
-            );
-
-            const revalidatingBeforePromise = Promise.all(
-              event.state[STATE_KEY].map(async (state) => {
-                const { head, fields, preparedState } = state;
-                await revalidationFunction(preparedState);
-              })
-            );
-
-            await Promise.all([revalidatingPromise, revalidatingBeforePromise, revalidatingDefaultHeadsPromise]);
-          }
-
-          return result;
-        };
-      });
-
-      ["afterDelete"].forEach((lifecycleName) => {
-        const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
-        contentType.lifecycles[lifecycleName] = async (event) => {
-          // call the old function
-          const result = await oldFunction(event);
-
-          if (prepareFunction) {
-            const revalidatingBeforePromise = Promise.all(
-              event.state[STATE_KEY].map(async (state) => {
-                const { head, fields, preparedState } = state;
-                await revalidationFunction(preparedState);
-              })
-            );
-
-            await revalidatingBeforePromise;
-          }
-          return result;
-        };
-      });
-    });
+    registerHeadType(strapi, headTypeName, headType);
   });
 };
