@@ -129,16 +129,16 @@ const findEntriesToRevalidate = async (
             // find all entries that reference this entry
             const paths = contentTypeRelationPaths(
               strapi,
-              contentTypeName,
-              otherContentTypeName
+              otherContentTypeName,
+              contentTypeName
             );
             const pathsWithId = paths.map((path) => {
               return pathToObjectWithId(path, entryId);
             });
             const stringPathsWithId = paths.map((path) => `${path}.id`);
 
-            /* console.log(paths, pathsWithId); */
-
+            /* console.log(paths, JSON.stringify(pathsWithId, null, 2)); */
+            /* console.log(`finding entries for ${otherContentTypeName}`); */
             entries = await strapi.entityService.findMany(
               otherContentTypeName,
               {
@@ -166,11 +166,12 @@ const findEntriesToRevalidate = async (
                 },
               }
             );
+            /* console.log("found entries"); */
 
             const dynamiczonePaths = contentTypeDynamicZoneWithRelationPaths(
               strapi,
-              contentTypeName,
-              otherContentTypeName
+              otherContentTypeName,
+              contentTypeName
             );
             const dynamiczonePopulatePaths = dynamiczonePaths.map((path) => {
               const [attributeName, componentAndPath] = path.split("::");
@@ -178,6 +179,7 @@ const findEntriesToRevalidate = async (
                 componentAndPath.split(".");
               return [attributeName, ...restPath].join(".");
             });
+            /* console.log(`populating the following fields for ${otherContentTypeName}`, dynamiczonePopulatePaths) */
             const dynamiczoneEntries = await strapi.entityService.findMany(
               otherContentTypeName,
               {
@@ -185,6 +187,8 @@ const findEntriesToRevalidate = async (
                 populate: dynamiczonePopulatePaths,
               }
             );
+
+            /* console.log("found entries for dynamic zones", dynamiczoneEntries); */
             const filteredDynamiczoneEntries = dynamiczoneEntries.filter(
               (entry) => {
                 // filter for each attribute
@@ -263,16 +267,22 @@ const findAllEntriesToRevalidate = async (
         revalidate: new Set(),
         softRevalidate: new Set(),
       };
-    }
-    if (checked[contentTypeName].revalidate.has(entryId)) {
+    } else if (checked[contentTypeName].revalidate.has(entryId)) {
       continue;
     }
+    /* console.log( */
+    /*   `finding entries to revalidate based on ${contentTypeName} : ${entryId}` */
+    /* ); */
     const entries = await findEntriesToRevalidate(
       strapi,
       contentTypeName,
       entryId,
       revalidateOther
     );
+    /* console.log( */
+    /*   `found entries to revalidate based on ${contentTypeName} : ${entryId}`, */
+    /*   entries */
+    /* ); */
     Object.keys(entries).forEach((contentTypeName) => {
       entries[contentTypeName].revalidate.forEach((id) => {
         if (checked[contentTypeName].revalidate.has(id)) {
@@ -350,6 +360,7 @@ const registerHeadType = (
         // find the content type entry
         event.state = { [STATE_KEY]: [] };
         const oldFunctionPromise = oldFunction(event);
+        /* console.log("finding entry"); */
         const entryPromise = strapi.entityService.findOne(
           contentTypeName,
           event.params.where.id
@@ -360,7 +371,9 @@ const registerHeadType = (
         const heads = await headService.findAllOfType(headTypeName);
         const defaultHeads: DefaultHead[] =
           await defaultHeadService.findManyOfType(headTypeName);
+        /* console.log("awaiting entry"); */
         const entry = await entryPromise;
+        /* console.log("found entry"); */
         if (prepareFunction) {
           await Promise.all(
             heads.map(async (head) => {
@@ -395,7 +408,9 @@ const registerHeadType = (
             })
           );
         }
+        /* console.log("awaiting old function"); */
         await oldFunctionPromise;
+        /* console.log("Prepared"); */
       };
     });
 
@@ -489,10 +504,13 @@ const registerHeadType = (
         const entry = event.result;
         const headService = getService(strapi, "head");
         const defaultHeadService = getService(strapi, "default-head");
+        /* console.log("Finding all heads"); */
         const heads = await headService.findAllOfType(headTypeName);
         const defaultHeads: DefaultHead[] =
           await defaultHeadService.findManyOfType(headTypeName);
+        /* console.log("Found all heads"); */
 
+        /* console.log('finding entries to revalidate', contentTypeName, entry.id, revalidateOtherObject[contentTypeName]); */
         const revalidationObject = await findAllEntriesToRevalidate(
           strapi as any,
           contentTypeName,
@@ -500,7 +518,7 @@ const registerHeadType = (
           revalidateOtherObject
         );
 
-        console.log("revalidating", revalidationObject);
+        /* console.log("revalidating", revalidationObject); */
 
         // TODO: use state heads
         if (prepareFunction) {
