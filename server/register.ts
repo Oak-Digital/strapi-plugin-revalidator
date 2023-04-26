@@ -421,7 +421,7 @@ const registerHeadType = (
         );
 
         if (prepareFunction) {
-          await Promise.all(
+          Promise.all(
             heads.map(async (head) => {
               const fields = await headService.getFieldsObject(head.id);
               await Promise.all(
@@ -448,7 +448,7 @@ const registerHeadType = (
               await revalidationFunction(preparedState);
             })
           );
-          await Promise.all(
+          Promise.all(
             defaultHeads.map(async (head) => {
               await Promise.all(
                 Object.keys(revalidationObject).map((contentTypeName) => {
@@ -508,7 +508,7 @@ const registerHeadType = (
             heads.map(async (head) => {
               const fields = await headService.getFieldsObject(head.id);
 
-              await Promise.all(
+              Promise.all(
                 Object.keys(revalidationObject).map((contentTypeName) => {
                   const contentTypeRevalidationObject =
                     revalidationObject[contentTypeName];
@@ -530,13 +530,13 @@ const registerHeadType = (
                 fields,
                 entry
               );
-              await revalidationFunction(preparedState);
+              revalidationFunction(preparedState);
             })
           );
 
           const revalidatingDefaultHeadsPromise = Promise.all(
             defaultHeads.map(async (defaultHead) => {
-              await Promise.all(
+              Promise.all(
                 Object.keys(revalidationObject).map((contentTypeName) => {
                   const contentTypeRevalidationObject =
                     revalidationObject[contentTypeName];
@@ -558,7 +558,7 @@ const registerHeadType = (
                 defaultHead.fields,
                 entry
               );
-              await revalidationFunction(preparedState);
+              revalidationFunction(preparedState);
             })
           );
 
@@ -569,11 +569,11 @@ const registerHeadType = (
             })
           );
 
-          await Promise.all([
-            revalidatingPromise,
-            revalidatingBeforePromise,
-            revalidatingDefaultHeadsPromise,
-          ]);
+          /* await Promise.all([ */
+          /*   revalidatingPromise, */
+          /*   revalidatingBeforePromise, */
+          /*   revalidatingDefaultHeadsPromise, */
+          /* ]); */
         }
 
         return result;
@@ -594,7 +594,7 @@ const registerHeadType = (
             })
           );
 
-          await revalidatingBeforePromise;
+          /* await revalidatingBeforePromise; */
         }
         return result;
       };
