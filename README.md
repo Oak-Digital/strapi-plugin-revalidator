@@ -12,7 +12,9 @@ This plugin let's you set up different types of heads and define rules for each 
 - [x] Define multiple head types
 - [x] Define rules for each head on how strapi should revalidate each content type
 - [x] Define rules for how each content type should be revalidated based on relations
-- [ ] dynamic url builder
+  - [x] Revalidate based on relations in fields and components
+  - [x] Revalidate based on relations in dynamic zones
+- [x] dynamic url builder
 - [x] Use GET parameters
 - [ ] Use POST parameters
 - [ ] Manual revalidate button on content types
