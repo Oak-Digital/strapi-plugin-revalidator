@@ -285,10 +285,7 @@ const findAllEntriesToRevalidate = async (
     /* ); */
     Object.keys(entries).forEach((contentTypeName) => {
       entries[contentTypeName].revalidate.forEach((id) => {
-        if (
-          contentTypeName in checked &&
-          checked[contentTypeName].revalidate.has(id)
-        ) {
+        if (checked[contentTypeName]?.revalidate.has(id) ?? false) {
           return;
         }
         queue.push([contentTypeName, id]);
