@@ -1,7 +1,7 @@
 import { Strapi } from "@strapi/strapi";
 import axios, { isAxiosError } from "axios";
 import pluginId from "./pluginId";
-import { headTypesConfig } from "../types/config";
+import { headTypesConfig, loggingConfig } from "../types/config";
 import { getService } from "./lib/service";
 import { getMulti } from "./lib/paths";
 import { Id, IStrapi } from "strapi-typed";
@@ -55,6 +55,17 @@ const pathToObjectWithId = (path: string, id: Id) => {
   const obj = set({}, `${path}.id`, id);
   return obj;
 };
+
+const logger = {
+  info: (...messages: any[]) => {
+    console.log("Revalidator - INFO: ", ...messages);
+  },
+  debug: (...messages: any[]) => {
+    console.log("Revalidator - DEBUG: ", ...messages);
+  },
+};
+
+const logLevel = ["none", "info", "debug"] as const;
 
 type RevalidateOther = Record<string, Record<string, Array<RevalidateOn>>>;
 type RevalidateObject = Record<
@@ -138,8 +149,8 @@ const findEntriesToRevalidate = async (
             });
             const stringPathsWithId = paths.map((path) => `${path}.id`);
 
-            console.log(paths, JSON.stringify(pathsWithId, null, 2));
-            console.log(`finding entries for ${otherContentTypeName}`);
+            /* console.log(paths, JSON.stringify(pathsWithId, null, 2)); */
+            logger.debug(`finding entries for ${otherContentTypeName}`);
             entries = await strapi.entityService.findMany(
               otherContentTypeName,
               {
@@ -167,7 +178,7 @@ const findEntriesToRevalidate = async (
                 },
               }
             );
-            /* console.log("found entries", entries); */
+            logger.debug(`found entries for ${otherContentTypeName}`, entries);
 
             const dynamiczonePaths = contentTypeDynamicZoneWithRelationPaths(
               strapi,
@@ -180,7 +191,7 @@ const findEntriesToRevalidate = async (
                 componentAndPath.split(".");
               return [attributeName, ...restPath].join(".");
             });
-            /* console.log(`populating the following fields for ${otherContentTypeName}`, dynamiczonePopulatePaths) */
+            logger.debug(`populating the following fields for ${otherContentTypeName}`, dynamiczonePopulatePaths)
             const dynamiczoneEntries = await strapi.entityService.findMany(
               otherContentTypeName,
               {
@@ -189,7 +200,6 @@ const findEntriesToRevalidate = async (
               }
             );
 
-            /* console.log("found entries for dynamic zones", dynamiczoneEntries); */
             const filteredDynamiczoneEntries = dynamiczoneEntries.filter(
               (entry) => {
                 // filter for each attribute
@@ -276,17 +286,17 @@ const findAllEntriesToRevalidate = async (
     } else if (checked[contentTypeName].revalidate.has(entryId)) {
       continue;
     }
-    /* console.log( */
-    /*   `finding entries to revalidate based on ${contentTypeName} : ${entryId}` */
-    /* ); */
+    logger.debug(
+      `finding entries to revalidate based on ${contentTypeName} id: ${entryId}`
+    );
     const entries = await findEntriesToRevalidate(
       strapi,
       contentTypeName,
       entryId,
       revalidateOther
     );
-    console.log(
-      `found entries to revalidate based on ${contentTypeName} : ${entryId}`,
+    logger.debug(
+      `found entries to revalidate based on ${contentTypeName} id: ${entryId}`,
       entries
     );
     // Check the entries that need to be revalidated, if they are already checked, we skip them.
@@ -325,6 +335,12 @@ const revalidate = async (
   const preparedState = await prepareFunction(strapi, fields, entry);
   await revalidationFunction(preparedState);
 };
+
+type EventStateArray = {
+  head: any;
+  fields: Record<string, string>;
+  preparedState: any;
+}[]
 
 const registerHeadType = (
   strapi: Strapi | (IStrapi & { entityService: any }),
@@ -366,9 +382,10 @@ const registerHeadType = (
       const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => { });
       contentType.lifecycles[lifecycleName] = async (event) => {
         // find the content type entry
-        event.state = { [STATE_KEY]: [] };
+        const state: { [STATE_KEY]: EventStateArray } = { [STATE_KEY]: [] };
+        event.state = state
         const oldFunctionPromise = oldFunction(event);
-        /* console.log("finding entry"); */
+        logger.debug(`finding entry while ${lifecycleName} for ${contentTypeName}`);
         const entryPromise = strapi.entityService.findOne(
           contentTypeName,
           event.params.where.id
@@ -379,9 +396,8 @@ const registerHeadType = (
         const heads = await headService.findAllOfType(headTypeName);
         const defaultHeads: DefaultHead[] =
           await defaultHeadService.findManyOfType(headTypeName);
-        /* console.log("awaiting entry"); */
         const entry = await entryPromise;
-        /* console.log("found entry"); */
+        logger.debug(`found entry while ${lifecycleName} for ${contentTypeName}`);
         if (prepareFunction) {
           await Promise.all(
             heads.map(async (head) => {
@@ -392,7 +408,7 @@ const registerHeadType = (
                 fields,
                 entry
               );
-              event.state[STATE_KEY].push({
+              state[STATE_KEY].push({
                 head,
                 fields,
                 preparedState,
@@ -408,7 +424,7 @@ const registerHeadType = (
                 fields,
                 entry
               );
-              event.state[STATE_KEY].push({
+              state[STATE_KEY].push({
                 head: defaultHead,
                 fields,
                 preparedState,
@@ -416,9 +432,8 @@ const registerHeadType = (
             })
           );
         }
-        /* console.log("awaiting old function"); */
+        // Do not wrap in try, since if the previous lifecycle fails, this should fail too
         await oldFunctionPromise;
-        /* console.log("Prepared"); */
       };
     });
 
@@ -427,8 +442,6 @@ const registerHeadType = (
       contentType.lifecycles[lifecycleName] = async (event) => {
         // call the old function
         const result = await oldFunction(event);
-
-        /* const heads = event.state[STATE_KEY].map((state) => state.head); */
 
         const entry = event.result;
         const headService = getService(strapi, "head");
@@ -442,6 +455,8 @@ const registerHeadType = (
           entry.id,
           revalidateOtherObject
         );
+
+        logger.info(`revalidating ${contentTypeName} during lifecycle ${lifecycleName}`, revalidationObject);
 
         if (prepareFunction) {
           Promise.all(
@@ -509,6 +524,8 @@ const registerHeadType = (
         // call the old function
         const result = await oldFunction(event);
 
+        const revalidatorState: EventStateArray = event.state[STATE_KEY];
+
         const entry = event.result;
         const headService = getService(strapi, "head");
         const defaultHeadService = getService(strapi, "default-head");
@@ -526,7 +543,7 @@ const registerHeadType = (
           revalidateOtherObject
         );
 
-        console.log("revalidating", revalidationObject);
+        logger.info(`revalidating ${contentTypeName} during lifecycle ${lifecycleName}`, revalidationObject);
 
         // TODO: Figure out what this todo means
         // TODO: use state heads
@@ -590,7 +607,7 @@ const registerHeadType = (
           );
 
           const revalidatingBeforePromise = Promise.all(
-            event.state[STATE_KEY].map(async (state) => {
+            revalidatorState.map(async (state) => {
               const { head, fields, preparedState } = state;
               await revalidationFunction(preparedState);
             })
@@ -612,10 +629,11 @@ const registerHeadType = (
       contentType.lifecycles[lifecycleName] = async (event) => {
         // call the old function
         const result = await oldFunction(event);
+        const revalidatorState: EventStateArray = event.state[STATE_KEY];
 
         if (prepareFunction) {
           const revalidatingBeforePromise = Promise.all(
-            event.state[STATE_KEY].map(async (state) => {
+            revalidatorState.map(async (state) => {
               const { head, fields, preparedState } = state;
               await revalidationFunction(preparedState);
             })
@@ -634,6 +652,13 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => {
   // Register configuration hooks in the lifecycles of content types
   const headTypesConfigData = strapi.plugin(pluginId).config("headTypes");
   const headTypes = headTypesConfig.parse(headTypesConfigData);
+  const loggingConfigData = strapi.plugin(pluginId).config("logging");
+  const logging = loggingConfig.parse(loggingConfigData);
+  const level = logLevel.indexOf(logging.level);
+  for (let i = logLevel.length - 1; i > level; i--) {
+    const levelName = logLevel[i];
+    logger[levelName] = () => { };
+  }
   Object.keys(headTypes).forEach((headTypeName) => {
     const headType = headTypes[headTypeName];
     registerHeadType(strapi, headTypeName, headType);

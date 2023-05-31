@@ -142,6 +142,28 @@ example:
 }
 ```
 
+### Logging
+
+Different log levels are available (`none`, `info` and `debug`)
+
+`none`: revalidator will never log anything
+
+`info` (default): Will log whenever something is revalidated and other useful info.
+
+`debug`: extra logs mostly used for debugging.
+
+It can be configured in the following way
+
+```typescript
+{
+  config: {
+    logging: {
+      level: "info",
+    },
+  },
+}
+```
+
 ### Full example
 
 ```typescript
