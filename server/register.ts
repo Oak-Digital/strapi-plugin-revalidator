@@ -204,7 +204,7 @@ const findEntriesToRevalidate = async (
                     const id = get(component, `${componentPath}.id`);
                     return (
                       component.__component ===
-                        `${componentCategory}.${componentName}` &&
+                      `${componentCategory}.${componentName}` &&
                       id === entryId
                     );
                   });
@@ -285,7 +285,10 @@ const findAllEntriesToRevalidate = async (
     /* ); */
     Object.keys(entries).forEach((contentTypeName) => {
       entries[contentTypeName].revalidate.forEach((id) => {
-        if (contentTypeName in checked && checked[contentTypeName].revalidate.has(id)) {
+        if (
+          contentTypeName in checked &&
+          checked[contentTypeName].revalidate.has(id)
+        ) {
           return;
         }
         queue.push([contentTypeName, id]);
@@ -355,7 +358,7 @@ const registerHeadType = (
     const prepareFunction = configContentType.prepareFn;
 
     ["beforeUpdate", "beforeDelete"].forEach((lifecycleName) => {
-      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
+      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => { });
       contentType.lifecycles[lifecycleName] = async (event) => {
         // find the content type entry
         event.state = { [STATE_KEY]: [] };
@@ -415,7 +418,7 @@ const registerHeadType = (
     });
 
     ["afterCreate"].forEach((lifecycleName) => {
-      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
+      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => { });
       contentType.lifecycles[lifecycleName] = async (event) => {
         // call the old function
         const result = await oldFunction(event);
@@ -496,7 +499,7 @@ const registerHeadType = (
     });
 
     ["afterUpdate"].forEach((lifecycleName) => {
-      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
+      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => { });
       contentType.lifecycles[lifecycleName] = async (event) => {
         // call the old function
         const result = await oldFunction(event);
@@ -599,7 +602,7 @@ const registerHeadType = (
     });
 
     ["afterDelete"].forEach((lifecycleName) => {
-      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => {});
+      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => { });
       contentType.lifecycles[lifecycleName] = async (event) => {
         // call the old function
         const result = await oldFunction(event);
