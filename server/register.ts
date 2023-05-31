@@ -3,6 +3,7 @@ import axios, { isAxiosError } from "axios";
 import pluginId from "./pluginId";
 import { headTypesConfig } from "../types/config";
 import { getService } from "./lib/service";
+import { getMulti } from "./lib/paths";
 import { Id, IStrapi } from "strapi-typed";
 import { STATE_KEY } from "./lib/constants";
 import {
@@ -137,8 +138,8 @@ const findEntriesToRevalidate = async (
             });
             const stringPathsWithId = paths.map((path) => `${path}.id`);
 
-            /* console.log(paths, JSON.stringify(pathsWithId, null, 2)); */
-            /* console.log(`finding entries for ${otherContentTypeName}`); */
+            console.log(paths, JSON.stringify(pathsWithId, null, 2));
+            console.log(`finding entries for ${otherContentTypeName}`);
             entries = await strapi.entityService.findMany(
               otherContentTypeName,
               {
@@ -166,7 +167,7 @@ const findEntriesToRevalidate = async (
                 },
               }
             );
-            /* console.log("found entries"); */
+            /* console.log("found entries", entries); */
 
             const dynamiczonePaths = contentTypeDynamicZoneWithRelationPaths(
               strapi,
@@ -200,13 +201,18 @@ const findEntriesToRevalidate = async (
                     componentAndPath.split(".");
                   const componentPath = restPath.join(".");
                   const attribute = entry[attributeName];
-                  return attribute.some((component: any) => {
-                    const id = get(component, `${componentPath}.id`);
-                    return (
-                      component.__component ===
-                      `${componentCategory}.${componentName}` &&
-                      id === entryId
-                    );
+                  const filteredComponents = attribute.filter(
+                    (component: any) => {
+                      return (
+                        component.__component ===
+                        `${componentCategory}.${componentName}`
+                      );
+                    }
+                  );
+                  return filteredComponents.some((component: any) => {
+                    /* const id = get(component, `${componentPath}.id`); */
+                    const ids = getMulti(component, [...restPath, "id"]);
+                    return ids.includes(entryId);
                   });
                 });
               }
@@ -279,10 +285,12 @@ const findAllEntriesToRevalidate = async (
       entryId,
       revalidateOther
     );
-    /* console.log( */
-    /*   `found entries to revalidate based on ${contentTypeName} : ${entryId}`, */
-    /*   entries */
-    /* ); */
+    console.log(
+      `found entries to revalidate based on ${contentTypeName} : ${entryId}`,
+      entries
+    );
+    // Check the entries that need to be revalidated, if they are already checked, we skip them.
+    // If they are not checked, we add them to the queue
     Object.keys(entries).forEach((contentTypeName) => {
       entries[contentTypeName].revalidate.forEach((id) => {
         if (checked[contentTypeName]?.revalidate.has(id) ?? false) {
@@ -518,8 +526,9 @@ const registerHeadType = (
           revalidateOtherObject
         );
 
-        /* console.log("revalidating", revalidationObject); */
+        console.log("revalidating", revalidationObject);
 
+        // TODO: Figure out what this todo means
         // TODO: use state heads
         if (prepareFunction) {
           const revalidatingPromise = Promise.all(
