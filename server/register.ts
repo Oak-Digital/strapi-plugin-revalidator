@@ -397,6 +397,10 @@ const registerHeadType = (
 ) => {
   const revalidateOtherObject: RevalidateOther = {};
   const { contentTypes } = headType;
+  // extend this with keys from revalidate on, since we need to create lifecycle hooks for those as well
+  const contentTypesExtended = {
+    ...contentTypes,
+  };
 
   Object.keys(contentTypes).forEach((contentTypeName) => {
     const configContentType = contentTypes[contentTypeName];
@@ -406,6 +410,13 @@ const registerHeadType = (
 
     Object.keys(revalidateOn).forEach((revalidateOnContentTypeName) => {
       const revalidateOnContentType = revalidateOn[revalidateOnContentTypeName];
+
+      if (!contentTypesExtended[revalidateOnContentTypeName]) {
+        contentTypesExtended[revalidateOnContentTypeName] = {
+          revalidateOn: {},
+        };
+      }
+
       const revalidateOnContentTypeArray = Array.isArray(
         revalidateOnContentType
       )
@@ -419,20 +430,20 @@ const registerHeadType = (
     });
   });
 
-  Object.keys(contentTypes).forEach((contentTypeName) => {
-    const configContentType = contentTypes[contentTypeName];
+  Object.keys(contentTypesExtended).forEach((contentTypeName) => {
+    const configContentType = contentTypesExtended[contentTypeName];
     const contentType = strapi.contentType(contentTypeName);
     const revalidationFunction =
       configContentType.revalidateFn ?? fallbackRevalidateFn;
     const prepareFunction = configContentType.prepareFn;
 
+    const lifecycles: Record<string, Function> = {};
+
     ["beforeUpdate", "beforeDelete"].forEach((lifecycleName) => {
-      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => { });
-      contentType.lifecycles[lifecycleName] = async (event) => {
+      lifecycles[lifecycleName] = async (event) => {
         // find the content type entry
         const state: { [STATE_KEY]: EventStateArray } = { [STATE_KEY]: [] };
         event.state = state;
-        const oldFunctionPromise = oldFunction(event);
         logger.debug(
           `finding entry while ${lifecycleName} for ${contentTypeName}`
         );
@@ -462,17 +473,11 @@ const registerHeadType = (
             })
           );
         }
-        // Do not wrap in try, since if the previous lifecycle fails, this should fail too
-        await oldFunctionPromise;
       };
     });
 
     ["afterCreate"].forEach((lifecycleName) => {
-      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => { });
-      contentType.lifecycles[lifecycleName] = async (event) => {
-        // call the old function
-        const result = await oldFunction(event);
-
+      lifecycles[lifecycleName] = async (event) => {
         const entry = event.result;
         const revalidationObject = await findAllEntriesToRevalidate(
           strapi as any,
@@ -491,23 +496,17 @@ const registerHeadType = (
         Promise.all(
           headFields.map(async ({ head, fields }) => {
             await revalidateRevalidationOnlyObject(
-              contentTypes,
+              contentTypesExtended,
               fields,
               revalidationObject
             );
           })
         );
-
-        return result;
       };
     });
 
     ["afterUpdate"].forEach((lifecycleName) => {
-      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => { });
-      contentType.lifecycles[lifecycleName] = async (event) => {
-        // call the old function
-        const result = await oldFunction(event);
-
+      lifecycles[lifecycleName] = async (event) => {
         const revalidatorState: EventStateArray = event.state[STATE_KEY];
 
         const entry = event.result;
@@ -532,13 +531,12 @@ const registerHeadType = (
           revalidationObject
         );
 
-
         const headFields = await getAllHeadTypesFields(strapi, headTypeName);
 
         Promise.all(
           headFields.map(async ({ head, fields }) => {
             await revalidateRevalidationOnlyObject(
-              contentTypes,
+              contentTypesExtended,
               fields,
               revalidationObject
             );
@@ -553,19 +551,18 @@ const registerHeadType = (
             })
           );
         }
-
-        return result;
       };
     });
 
     ["afterDelete"].forEach((lifecycleName) => {
-      const oldFunction = contentType.lifecycles[lifecycleName] ?? (() => { });
-      contentType.lifecycles[lifecycleName] = async (event) => {
+      lifecycles[lifecycleName] = async (event) => {
         // call the old function
-        const result = await oldFunction(event);
         const revalidatorState: EventStateArray = event.state[STATE_KEY];
 
-        if (prepareFunction) {
+          if (prepareFunction) {
+          logger.info(
+            `revalidating ${contentTypeName} during lifecycle ${lifecycleName}`,
+          );
           const revalidatingBeforePromise = Promise.all(
             revalidatorState.map(async (state) => {
               const { head, fields, preparedState } = state;
@@ -575,8 +572,13 @@ const registerHeadType = (
 
           /* await revalidatingBeforePromise; */
         }
-        return result;
       };
+    });
+
+    // @ts-ignore - incorrect type defs
+    strapi.db.lifecycles.subscribe({
+      models: [contentTypeName],
+      ...lifecycles,
     });
   });
 };
