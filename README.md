@@ -26,7 +26,7 @@ This plugin let's you set up different types of heads and define rules for each 
 
 ## Plugin support / integrations
 
-- [ ] [UI Navigation](https://github.com/VirtusLab-Open-Source/strapi-plugin-navigation)
+- [x] [UI Navigation](https://github.com/VirtusLab-Open-Source/strapi-plugin-navigation) (see Integrations on this page)
 - [ ] [url-alias](https://github.com/strapi-community/strapi-plugin-url-alias)
 
 ## Getting started
@@ -268,6 +268,39 @@ export default ({ env }) => ({
     },
   },
 });
+```
+
+## Integrations
+
+### UI Navigation
+
+It is simple to revalidate all entries of a content type when a navigation item is changed: add the following to your revalidateOn object for the content type you want to revalidate.
+
+```typescript
+{
+  // your other revalidateOn contentTypes...
+  "plugin::navigation.navigation-item": {
+    revalidationType: "soft"
+  }
+}
+```
+
+example of revalidating page
+
+```typescript
+{
+  // ...
+  "api::page.page": {
+    prepareFn: () => {},
+    revalidateOn: {
+      "plugin::navigation.navigation-item": {
+        revalidationType: "soft",
+      },
+      // ... your other rules
+    },
+  },
+  // ...
+}
 ```
 
 ## Development
