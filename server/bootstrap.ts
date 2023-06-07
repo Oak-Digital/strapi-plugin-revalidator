@@ -404,18 +404,29 @@ const registerHeadType = (
 
   Object.keys(contentTypes).forEach((contentTypeName) => {
     const configContentType = contentTypes[contentTypeName];
-    const contentType = strapi.contentType(contentTypeName);
 
     const revalidateOn = configContentType.revalidateOn;
 
     Object.keys(revalidateOn).forEach((revalidateOnContentTypeName) => {
-      const revalidateOnContentType = revalidateOn[revalidateOnContentTypeName];
-
       if (!contentTypesExtended[revalidateOnContentTypeName]) {
         contentTypesExtended[revalidateOnContentTypeName] = {
           revalidateOn: {},
         };
       }
+    });
+  });
+
+  Object.keys(contentTypesExtended).forEach((contentTypeName) => {
+    const configContentType = contentTypesExtended[contentTypeName];
+
+    const revalidateOn = configContentType.revalidateOn;
+
+    if (!revalidateOtherObject[contentTypeName]) {
+      revalidateOtherObject[contentTypeName] = {};
+    }
+
+    Object.keys(revalidateOn).forEach((revalidateOnContentTypeName) => {
+      const revalidateOnContentType = revalidateOn[revalidateOnContentTypeName];
 
       const revalidateOnContentTypeArray = Array.isArray(
         revalidateOnContentType
