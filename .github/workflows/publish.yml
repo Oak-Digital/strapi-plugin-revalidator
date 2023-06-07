@@ -1,3 +1,8 @@
+name: Publish
+
+permissions:
+  contents: write
+
 on:
   push:
     tags:
@@ -17,3 +22,6 @@ jobs:
         with:
           token: ${{ secrets.NPM_TOKEN }}
           access: public
+      - run: npx changelogithub
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
