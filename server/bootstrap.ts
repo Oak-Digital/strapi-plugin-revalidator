@@ -22,6 +22,15 @@ import { DefaultHead } from "../types/default-head";
 // TODO: refactor this file
 
 type MyStrapi = Strapi | (IStrapi & { entityService: any });
+type SimpleObject = Record<string, any>;
+/**
+ * Single result of entity service find functions.
+ */
+type FindResult = {
+  id: Id;
+  [key: string]: any;
+};
+type FindManyResult = null | FindResult | FindResult[];
 
 const fallbackRevalidateFn = async (preparedState: any) => {
   try {
@@ -138,7 +147,7 @@ const findEntriesToRevalidate = async (
           const { ifReferenced, predicate, revalidationType } = rule;
           const idsToRevalidateForRule =
             revalidationType === "soft" ? idsToSoftRevalidate : idsToRevalidate;
-          let entries: { id: Id }[];
+          let entries: { id: Id }[] = [];
           if (ifReferenced) {
             // find all entries that reference this entry
             const paths = contentTypeRelationPaths(
@@ -153,9 +162,8 @@ const findEntriesToRevalidate = async (
 
             /* console.log(paths, JSON.stringify(pathsWithId, null, 2)); */
             logger.debug(`finding entries for ${otherContentTypeName}`);
-            entries = await strapi.entityService.findMany(
-              otherContentTypeName,
-              {
+            const initialEntries: FindManyResult =
+              await strapi.entityService.findMany(otherContentTypeName, {
                 fields: ["id"],
                 filters: {
                   /* $and: [ */
@@ -178,8 +186,12 @@ const findEntriesToRevalidate = async (
                   /* } */
                   /* ], */
                 },
-              }
-            );
+              });
+            if (initialEntries !== null) {
+              entries = Array.isArray(initialEntries)
+                ? initialEntries
+                : [initialEntries];
+            }
             logger.debug(`found entries for ${otherContentTypeName}`, entries);
 
             const dynamiczonePaths = contentTypeDynamicZoneWithRelationPaths(
@@ -197,53 +209,64 @@ const findEntriesToRevalidate = async (
               `populating the following fields for ${otherContentTypeName}`,
               dynamiczonePopulatePaths
             );
-            const dynamiczoneEntries = await strapi.entityService.findMany(
-              otherContentTypeName,
-              {
+            // dynamiczone entries is either an array of the object if it is a collection type or a single object if it is a single type
+            const initialDynamicZoneEntries: FindManyResult =
+              await strapi.entityService.findMany(otherContentTypeName, {
                 fields: ["id"],
                 populate: dynamiczonePopulatePaths,
-              }
-            );
+              });
 
-            const filteredDynamiczoneEntries = dynamiczoneEntries.filter(
-              (entry) => {
-                // filter for each attribute
-                // filter for each component
+            if (initialDynamicZoneEntries !== null) {
+              const dynamiczoneEntries = Array.isArray(
+                initialDynamicZoneEntries
+              )
+                ? initialDynamicZoneEntries
+                : [initialDynamicZoneEntries];
 
-                return dynamiczonePaths.some((path) => {
-                  const [attributeName, componentAndPath] = path.split("::");
-                  const [componentCategory, componentName, ...restPath] =
-                    componentAndPath.split(".");
-                  const componentPath = restPath.join(".");
-                  const attribute = entry[attributeName];
-                  const filteredComponents = attribute.filter(
-                    (component: any) => {
-                      return (
-                        component.__component ===
-                        `${componentCategory}.${componentName}`
-                      );
-                    }
-                  );
-                  return filteredComponents.some((component: any) => {
-                    /* const id = get(component, `${componentPath}.id`); */
-                    const ids = getMulti(component, [...restPath, "id"]);
-                    return ids.includes(entryId);
+              const filteredDynamiczoneEntries = dynamiczoneEntries.filter(
+                (entry) => {
+                  // filter for each attribute
+                  // filter for each component
+
+                  return dynamiczonePaths.some((path) => {
+                    const [attributeName, componentAndPath] = path.split("::");
+                    const [componentCategory, componentName, ...restPath] =
+                      componentAndPath.split(".");
+                    const componentPath = restPath.join(".");
+                    const attribute = entry[attributeName];
+                    const filteredComponents = attribute.filter(
+                      (component: any) => {
+                        return (
+                          component.__component ===
+                          `${componentCategory}.${componentName}`
+                        );
+                      }
+                    );
+                    return filteredComponents.some((component: any) => {
+                      /* const id = get(component, `${componentPath}.id`); */
+                      const ids = getMulti(component, [...restPath, "id"]);
+                      return ids.includes(entryId);
+                    });
                   });
-                });
-              }
-            );
-            entries.push(...filteredDynamiczoneEntries);
+                }
+              );
+              entries.push(...filteredDynamiczoneEntries);
+            }
           } else {
-            entries = await strapi.entityService.findMany(
-              otherContentTypeName,
-              {
+            // if ifReferenced is false, then we need to find all entries
+            const initialEntries: FindManyResult =
+              await strapi.entityService.findMany(otherContentTypeName, {
                 fields: ["id"],
-              }
-            );
+              });
+            if (initialEntries !== null) {
+              entries = Array.isArray(initialEntries)
+                ? initialEntries
+                : [initialEntries];
+              entries.forEach((entry) => {
+                idsToRevalidateForRule.add(entry.id);
+              });
+            }
           }
-          entries.forEach((entry) => {
-            idsToRevalidateForRule.add(entry.id);
-          });
         })
       );
 
@@ -369,13 +392,12 @@ const getAllHeadTypesFields = async (
     headTypeName
   );
 
-  const headFields: { head: any; fields: Record<string, any> }[] =
-    await Promise.all(
-      heads.map(async (head) => {
-        const fields = await headService.getFieldsObject(head.id);
-        return { head, fields };
-      })
-    );
+  const headFields: { head: any; fields: SimpleObject }[] = await Promise.all(
+    heads.map(async (head) => {
+      const fields = await headService.getFieldsObject(head.id);
+      return { head, fields };
+    })
+  );
   const defaultHeadFields = defaultHeads.map((head) => ({
     head,
     fields: head.fields,
@@ -570,9 +592,9 @@ const registerHeadType = (
         // call the old function
         const revalidatorState: EventStateArray = event.state[STATE_KEY];
 
-          if (prepareFunction) {
+        if (prepareFunction) {
           logger.info(
-            `revalidating ${contentTypeName} during lifecycle ${lifecycleName}`,
+            `revalidating ${contentTypeName} during lifecycle ${lifecycleName}`
           );
           const revalidatingBeforePromise = Promise.all(
             revalidatorState.map(async (state) => {
