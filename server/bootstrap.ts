@@ -80,7 +80,7 @@ const logLevel = ["none", "info", "debug"] as const;
 
 type RevalidateOther = Record<string, Record<string, Array<RevalidateOn>>>;
 type RevalidateObject = Record<
-  string,
+  string | number,
   {
     revalidate: Set<Id>;
     softRevalidate: Set<Id>;
@@ -287,13 +287,13 @@ const findEntriesToRevalidate = async (
 const findAllEntriesToRevalidate = async (
   strapi: Strapi,
   contentTypeName: string,
-  entryId: string,
+  entryIds: (string | number)[],
   revalidateOther: RevalidateOther
 ) => {
   const checked: RevalidateObject = {};
   let allEntriesToRevalidate: RevalidateObject = {
     [contentTypeName]: {
-      revalidate: new Set([entryId]),
+      revalidate: new Set(entryIds),
       softRevalidate: new Set(),
     },
   };
@@ -302,7 +302,7 @@ const findAllEntriesToRevalidate = async (
   // keep track of which entries need to be checked
   // if there are no more entries to check, return checked
 
-  const queue: [string, Id][] = [[contentTypeName, entryId]];
+  const queue: (readonly [string, Id])[] = [...entryIds.map((entryId) => [contentTypeName, entryId] as const)];
 
   while (queue.length > 0) {
     const [contentTypeName, entryId] = queue.pop()!; // at this point we know that the queue is not empty since we just checked
@@ -509,13 +509,21 @@ const registerHeadType = (
       };
     });
 
-    ["afterCreate"].forEach((lifecycleName) => {
+    ["afterCreate", "afterCreateMany"].forEach((lifecycleName) => {
       lifecycles[lifecycleName] = async (event) => {
         const entry = event.result;
+
+        logger.info('This is an event:', event);
+        // console.log(event);
+
+        const entries = event.result ? [event.result] : strapi.db.query(contentTypeName).findMany({
+          ...event.params,
+        });
+
         const revalidationObject = await findAllEntriesToRevalidate(
           strapi as any,
           contentTypeName,
-          entry.id,
+          [entry.id],
           revalidateOtherObject
         );
 
