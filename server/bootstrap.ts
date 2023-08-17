@@ -302,7 +302,9 @@ const findAllEntriesToRevalidate = async (
   // keep track of which entries need to be checked
   // if there are no more entries to check, return checked
 
-  const queue: (readonly [string, Id])[] = [...entryIds.map((entryId) => [contentTypeName, entryId] as const)];
+  const queue: (readonly [string, Id])[] = [
+    ...entryIds.map((entryId) => [contentTypeName, entryId] as const),
+  ];
 
   while (queue.length > 0) {
     const [contentTypeName, entryId] = queue.pop()!; // at this point we know that the queue is not empty since we just checked
@@ -472,7 +474,14 @@ const registerHeadType = (
 
     const lifecycles: Record<string, Function> = {};
 
-    ["beforeUpdate", "beforeDelete"].forEach((lifecycleName) => {
+    (
+      [
+        "beforeUpdate",
+        "beforeDelete",
+        "beforeUpdateMany",
+        "beforeDeleteMany",
+      ] as const
+    ).forEach((lifecycleName) => {
       lifecycles[lifecycleName] = async (event) => {
         // find the content type entry
         const state: { [STATE_KEY]: EventStateArray } = { [STATE_KEY]: [] };
@@ -480,50 +489,58 @@ const registerHeadType = (
         logger.debug(
           `finding entry while ${lifecycleName} for ${contentTypeName}`
         );
-        const entryPromise = strapi.entityService.findOne(
-          contentTypeName,
-          event.params.where.id
-        );
+
+        const entries = await strapi.db
+          // @ts-ignore - FIXME: strapi should fix this
+          .query(contentTypeName)
+          .findMany(event.params);
 
         const headFields = await getAllHeadTypesFields(strapi, headTypeName);
-        const entry = await entryPromise;
         logger.debug(
           `found entry while ${lifecycleName} for ${contentTypeName}`
         );
+
         if (prepareFunction) {
           await Promise.all(
             headFields.map(async ({ head, fields }) => {
-              const preparedState = await prepareFunction(
-                strapi,
-                fields,
-                entry
+              return Promise.all(
+                entries.map(async (entry) => {
+                  const preparedState = await prepareFunction(
+                    strapi,
+                    fields,
+                    entry
+                  );
+                  state[STATE_KEY].push({
+                    head,
+                    fields,
+                    preparedState,
+                  });
+                })
               );
-              state[STATE_KEY].push({
-                head,
-                fields,
-                preparedState,
-              });
             })
           );
         }
       };
     });
 
-    ["afterCreate", "afterCreateMany"].forEach((lifecycleName) => {
+    (["afterCreate", "afterCreateMany"] as const).forEach((lifecycleName) => {
       lifecycles[lifecycleName] = async (event) => {
-        const entry = event.result;
+        // @ts-ignore - FIXME: strapi should fix this
+        // const entries = entry ? [entry] : strapi.db.query(contentTypeName).findMany({
+        //   ...event.params,
+        // });
 
-        logger.info('This is an event:', event);
-        // console.log(event);
-
-        const entries = event.result ? [event.result] : strapi.db.query(contentTypeName).findMany({
-          ...event.params,
-        });
+        let entryIds;
+        if (lifecycleName === "afterCreate") {
+          entryIds = [event.result.id];
+        } else if (lifecycleName === "afterCreateMany") {
+          entryIds = event.result.ids;
+        }
 
         const revalidationObject = await findAllEntriesToRevalidate(
           strapi as any,
           contentTypeName,
-          [entry.id],
+          entryIds,
           revalidateOtherObject
         );
 
@@ -546,11 +563,25 @@ const registerHeadType = (
       };
     });
 
-    ["afterUpdate"].forEach((lifecycleName) => {
+    (["afterUpdate", "afterUpdateMany"] as const).forEach((lifecycleName) => {
       lifecycles[lifecycleName] = async (event) => {
         const revalidatorState: EventStateArray = event.state[STATE_KEY];
 
-        const entry = event.result;
+        let entries: any[];
+        if (lifecycleName === "afterUpdate") {
+          const entry = event.result;
+          entries = [entry];
+        } else if (lifecycleName === "afterUpdateMany") {
+          entries = await strapi.db
+            // @ts-ignore - FIXME: strapi should fix This
+            .query(contentTypeName)
+            .findMany(event.params);
+        } else {
+          return;
+        }
+
+        const entryIds = entries.map((entry) => entry.id);
+
         const headService = getService(strapi, "head");
         const defaultHeadService = getService(strapi, "default-head");
         /* console.log("Finding all heads"); */
@@ -563,7 +594,7 @@ const registerHeadType = (
         const revalidationObject = await findAllEntriesToRevalidate(
           strapi as any,
           contentTypeName,
-          entry.id,
+          entryIds,
           revalidateOtherObject
         );
 
@@ -595,7 +626,7 @@ const registerHeadType = (
       };
     });
 
-    ["afterDelete"].forEach((lifecycleName) => {
+    (["afterDelete", "afterDeleteMany"] as const).forEach((lifecycleName) => {
       lifecycles[lifecycleName] = async (event) => {
         // call the old function
         const revalidatorState: EventStateArray = event.state[STATE_KEY];
