@@ -63,7 +63,7 @@
   "scripts": {
     "develop": "tsc -w --outDir playground/src/plugins/revalidator",
     "release": "bumpp",
-    "test": "ENV_PATH=./playground/.env jest --verbose --runInBand --forceExit",
+    "test": "jest --verbose --runInBand --forceExit",
     "build": "tsc",
     "build:playground": "tsc --outDir playground/src/plugins/revalidator"
   },
