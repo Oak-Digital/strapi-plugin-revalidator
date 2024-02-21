@@ -305,12 +305,10 @@ example of revalidating page
 
 ## Development
 
-To develop on this plugin first open a strapi project and navigate to `src/plugins/` and clone this repo or your fork
+To develop on this plugin use the playground in this repo.
 
 ```bash
-cd src/plugins
-git clone git@github.com:Oak-Digital/strapi-plugin-revalidator.git revalidator
-cd revalidator
+cd playground
 ```
 
 Install dependencies with the
@@ -325,20 +323,7 @@ Then to make sure the build is always up to date run
 npm run develop
 ```
 
-Add the following basic config to `config/plugins.ts`
-
-```typescript
-export default ({ env }) => ({
-  // ...
-  revalidator: {
-    enabled: true,
-    resolve: "./src/plugins/revalidator",
-  },
-  // ...
-});
-```
-
-In another terminal go to the root of your project and run `strapi develop --watch-admin`. This can probably also be run like the following depending on your setup.
+In another terminal go to the playground folder and run `strapi develop --watch-admin`. This can probably also be run like the following depending on your setup.
 
 ```bash
 npm run develop -- --watch-admin

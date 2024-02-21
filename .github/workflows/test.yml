@@ -1,0 +1,32 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18, 20]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          node-version: ${{ matrix.node }}
+      - name: Install dependencies
+        run: npm ci
+      - run: npm run build:playground
+      - name: Install playground
+        run: npm ci
+        working-directory: ./playground
+      - name: Build playground
+        run: npm run build
+        working-directory: ./playground
+      - name: Test step
+        run: npm run test
