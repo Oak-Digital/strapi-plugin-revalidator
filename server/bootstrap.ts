@@ -74,6 +74,9 @@ const logger = {
   debug: (...messages: any[]) => {
     console.log("Revalidator - DEBUG: ", ...messages);
   },
+  error: (...messages: any[]) => {
+    console.error("Revalidator - ERROR: ", ...messages);
+  }
 };
 
 const logLevel = ["none", "info", "debug"] as const;
@@ -352,18 +355,22 @@ const revalidate = async (
   contentTypeName: string,
   entryId: Id
 ) => {
+  logger.debug(`starting revalidating ${contentTypeName} with id ${entryId}`);
   const config = configs[contentTypeName];
   const revalidationFunction = config.revalidateFn ?? fallbackRevalidateFn;
   const prepareFunction = config.prepareFn;
 
   if (!prepareFunction) {
+    logger.debug(`No prepare function for ${contentTypeName} with id ${entryId}. Skipping...`);
     return;
   }
 
   const entry = await strapi.entityService.findOne(contentTypeName, entryId);
 
   const preparedState = await prepareFunction(strapi, fields, entry);
+  logger.debug(`prepared state for ${contentTypeName} with id ${entryId}, running revalidation function...`, preparedState);
   await revalidationFunction(preparedState);
+  logger.debug(`finished revalidating ${contentTypeName} with id ${entryId}`);
 };
 
 const revalidateRevalidationOnlyObject = async (
@@ -371,6 +378,7 @@ const revalidateRevalidationOnlyObject = async (
   fields: Record<string, string>,
   revalidationObject: RevalidateOnlyObject
 ) => {
+  logger.debug("revalidating revalidation only object", revalidationObject);
   await Promise.all(
     Object.keys(revalidationObject).map((contentTypeName) => {
       const contentTypeRevalidationObject = revalidationObject[contentTypeName];

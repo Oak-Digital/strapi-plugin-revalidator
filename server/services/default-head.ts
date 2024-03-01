@@ -35,7 +35,8 @@ export default ({ strapi }: { strapi: IStrapi & { entityService: any } }) => ({
   findManyOfType: async (headType: string) => {
     const service = getService(strapi, "default-head");
     const heads = await service.findMany();
-    return heads.filter((head) => head.headType === headType);
+    const filtered = heads.filter((head) => head.headType === headType);
+    return filtered;
   },
 
   findOne: async (headType: string, index: number) => {
